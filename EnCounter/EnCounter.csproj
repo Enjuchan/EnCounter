@@ -1,0 +1,16 @@
+<Project Sdk="Dalamud.NET.Sdk/15.0.0">
+    <PropertyGroup>
+        <AssemblyName>EnCounter</AssemblyName>
+        <AssemblyVersion>0.1.0.0</AssemblyVersion>
+        <FileVersion>0.1.0.0</FileVersion>
+        <InformationalVersion>0.1.0.0</InformationalVersion>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+    </PropertyGroup>
+    <ItemGroup>
+        <Content Include="EnCounter.json" CopyToOutputDirectory="Always" />
+    </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\EnCounter.Core\EnCounter.Core.csproj" />
+    </ItemGroup>
+</Project>

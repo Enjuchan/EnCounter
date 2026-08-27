@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="EnCounter.Core/EnCounter.Core.csproj" />
+  <Project Path="EnCounter/EnCounter.csproj" />
+  <Project Path="EnCounter.Core.Tests/EnCounter.Core.Tests.csproj" />
+</Solution>
