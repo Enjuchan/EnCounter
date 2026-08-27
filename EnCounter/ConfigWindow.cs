@@ -21,6 +21,8 @@ public sealed class ConfigWindow(
     Action save)
 {
     private const uint Warnfarbe = 0xFF3333FFu;
+    /// <summary>Gelb: geht noch, aber nicht fuer jeden Namen.</summary>
+    private const uint Hinweisfarbe = 0xFF66CCFFu;
     private const uint Graufarbe = 0xFF999999u;
 
     /// <summary>
@@ -333,14 +335,14 @@ public sealed class ConfigWindow(
         if (regel.ShowName)
         {
             DrawVorlage("With name", regel.PersonalTemplate, TitleTemplate.MaxPersonalFreeText,
-                        v => regel.PersonalTemplate = v);
+                        v => regel.PersonalTemplate = v, mitNamen: true);
 
             ImGui.Spacing();
             ImGui.TextColored(Graufarbe, "Fallback if the name makes it too long:");
         }
 
         DrawVorlage("Without name", regel.GeneralTemplate, TitleTemplate.MaxTitleLength,
-                    v => regel.GeneralTemplate = v);
+                    v => regel.GeneralTemplate = v, mitNamen: false);
 
         ImGui.Separator();
 
@@ -353,7 +355,16 @@ public sealed class ConfigWindow(
         }
     }
 
-    private void DrawVorlage(string label, string wert, int grenze, Action<string> setzen)
+    /// <summary>
+    /// Vorlage mit Zeichenzähler.
+    ///
+    /// Die feste Grenze rechnet mit dem längstmöglichen Vornamen. Sie zu überschreiten
+    /// ist kein Fehler: Bei kürzeren Namen passt die Meldung weiterhin, bei längeren
+    /// greift der Rückfall auf die namenlose Vorlage. Deshalb steht hier, **bis zu
+    /// welcher Namenslänge** es reicht, statt einer pauschalen Warnung.
+    /// </summary>
+    private void DrawVorlage(string label, string wert, int grenze, Action<string> setzen,
+                             bool mitNamen)
     {
         var text = wert;
         ImGui.SetNextItemWidth(320);
@@ -364,15 +375,40 @@ public sealed class ConfigWindow(
         }
 
         var benutzt = TitleTemplate.FreeTextLength(text);
-        var zuLang = benutzt > grenze;
 
-        ImGui.TextColored(zuLang ? Warnfarbe : Graufarbe, $"      {benutzt} / {grenze}");
+        if (!mitNamen)
+        {
+            // Ohne Namen ist die Grenze hart - hier gibt es keinen Rueckfall mehr.
+            var zuLang = benutzt > grenze;
+            ImGui.TextColored(zuLang ? Warnfarbe : Graufarbe, $"      {benutzt} / {grenze}");
 
-        if (!zuLang)
+            if (zuLang)
+            {
+                ImGui.SameLine();
+                ImGui.TextColored(Warnfarbe, "too long, Honorific will not show it");
+            }
+
             return;
+        }
 
-        ImGui.SameLine();
-        ImGui.TextColored(Warnfarbe, "too long, Honorific will not show it");
+        var maxName = TitleTemplate.MaxNameLengthFor(text);
+
+        if (maxName >= 15)
+        {
+            ImGui.TextColored(Graufarbe, $"      {benutzt} / {grenze}  fits any name");
+        }
+        else if (maxName > 0)
+        {
+            ImGui.TextColored(Hinweisfarbe,
+                $"      {benutzt} / {grenze}  fits names up to {maxName} characters");
+            ImGui.TextColored(Graufarbe, "      Longer names fall back to the template below.");
+        }
+        else
+        {
+            ImGui.TextColored(Warnfarbe,
+                $"      {benutzt} / {grenze}  too long for any name");
+            ImGui.TextColored(Warnfarbe, "      The template below will always be used instead.");
+        }
     }
 
     private void DrawFarben(Rule regel)

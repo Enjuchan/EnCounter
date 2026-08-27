@@ -25,9 +25,27 @@ public static partial class TitleTemplate
     [GeneratedRegex(@"\[Name\]|\[Anzahl\]")]
     private static partial Regex Placeholders();
 
+    /// <summary>Kürzestmöglicher Vorname in FFXIV.</summary>
+    public const int MinFirstName = 2;
+
     /// <summary>Länge der Vorlage ohne die Platzhalter.</summary>
     public static int FreeTextLength(string template) =>
         Placeholders().Replace(template ?? string.Empty, string.Empty).Length;
+
+    /// <summary>
+    /// Bis zu welcher Vornamenlänge diese Vorlage in den Titel passt.
+    ///
+    /// Die feste Grenze von <see cref="MaxPersonalFreeText"/> rechnet mit dem
+    /// längstmöglichen Namen. Wer kürzere Namen erwartet, darf mehr Text schreiben -
+    /// dann greift bei langen Namen eben der Rückfall auf die namenlose Vorlage.
+    ///
+    /// Ergebnis 0 heißt: passt für keinen Namen, die Vorlage kommt nie zum Zug.
+    /// </summary>
+    public static int MaxNameLengthFor(string template)
+    {
+        var rest = MaxTitleLength - FreeTextLength(template) - MaxDigits;
+        return rest < MinFirstName ? 0 : Math.Min(rest, MaxFirstName);
+    }
 
     public static string Render(string template, string? name, int count) =>
         (template ?? string.Empty)

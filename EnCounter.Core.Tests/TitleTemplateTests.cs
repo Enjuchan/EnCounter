@@ -84,6 +84,20 @@ public class TitleTemplateTests
     }
 
     [Fact]
+    public void Maximale_Namenslaenge_haengt_an_der_Vorlage()
+    {
+        // 13 Zeichen freier Text: reicht fuer jeden Namen.
+        Assert.Equal(15, TitleTemplate.MaxNameLengthFor("[Name] petted you [Anzahl]x"));
+
+        // Laenger: reicht nur noch fuer kuerzere Namen.
+        // " hugged you warmly " sind 19 Zeichen: 32 - 19 - 4 = 9
+        Assert.Equal(9, TitleTemplate.MaxNameLengthFor("[Name] hugged you warmly [Anzahl]"));
+
+        // Zu lang fuer jeden Namen - Vornamen haben mindestens zwei Zeichen.
+        Assert.Equal(0, TitleTemplate.MaxNameLengthFor("[Name] hugged you very warmly indeed [Anzahl]"));
+    }
+
+    [Fact]
     public void Grenzwerte_stimmen()
     {
         Assert.Equal(32, TitleTemplate.MaxTitleLength);
