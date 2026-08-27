@@ -51,8 +51,11 @@ public sealed class HonorificBridge(IDalamudPluginInterface plugin)
     }
 
     /// <summary>
-    /// Setzt den Titel. Farben werden nur mitgeschickt, wenn die Regel welche
-    /// vorgibt - sonst bleibt Honorifics eigene Gestaltung erhalten.
+    /// Setzt den Titel. Farben werden nur mitgeschickt, wenn die Regel welche vorgibt.
+    ///
+    /// **Ohne Farben greift die Standarddarstellung des Spiels**, nicht Honorifics
+    /// eigene Gestaltung: Der IPC-Titel ersetzt dessen Auswahl vollstaendig, also
+    /// kommen auch dessen Farben nicht zum Zug. Im Spiel beobachtet.
     ///
     /// Der Aufbau entspricht Honorifics TitleData: Farben als Vector3 mit X, Y, Z
     /// im Bereich 0 bis 1, null für "nicht gesetzt".

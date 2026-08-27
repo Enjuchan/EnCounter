@@ -420,7 +420,7 @@ public sealed class ConfigWindow(
             save();
         }
 
-        ImGui.TextColored(Graufarbe, "Off: Honorific's own styling is kept.");
+        ImGui.TextColored(Graufarbe, "Off: the game's default title styling is used.");
 
         if (!regel.UseColours)
             return;
