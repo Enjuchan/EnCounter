@@ -9,6 +9,7 @@
     </PropertyGroup>
     <ItemGroup>
         <Content Include="EnCounter.json" CopyToOutputDirectory="Always" />
+        <Content Include="images\**" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
     <ItemGroup>
         <ProjectReference Include="..\EnCounter.Core\EnCounter.Core.csproj" />
