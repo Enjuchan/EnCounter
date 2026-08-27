@@ -48,7 +48,13 @@ public sealed class Plugin : IDalamudPlugin
         window = new ConfigWindow(config, counters, Data, () => PluginInterface.SavePluginConfig(config));
 
         PluginInterface.UiBuilder.Draw += window.Draw;
+
+        // Dalamud kennt zwei Einstiege: das Zahnrad fuer Einstellungen und den Knopf
+        // fuer das Hauptfenster. Bei EnCounter ist beides dasselbe - die
+        // Regelverwaltung ist der einzige Einstieg, den es gibt. Ohne OpenMainUi
+        // mahnt der Plugin-Installer das an.
         PluginInterface.UiBuilder.OpenConfigUi += Oeffnen;
+        PluginInterface.UiBuilder.OpenMainUi += Oeffnen;
 
         Commands.AddHandler("/encounter", new Dalamud.Game.Command.CommandInfo((_, _) => Oeffnen())
         {
@@ -165,6 +171,7 @@ public sealed class Plugin : IDalamudPlugin
         Commands.RemoveHandler("/encounter");
         PluginInterface.UiBuilder.Draw -= window.Draw;
         PluginInterface.UiBuilder.OpenConfigUi -= Oeffnen;
+        PluginInterface.UiBuilder.OpenMainUi -= Oeffnen;
 
         Framework.Update -= Tick;
         watcher.OnEvent -= Handle;
