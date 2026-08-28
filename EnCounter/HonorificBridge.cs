@@ -83,7 +83,9 @@ public sealed class HonorificBridge(IDalamudPluginInterface plugin)
             var daten = new
             {
                 Title = text,
-                IsPrefix = true,
+
+                // Ueber oder unter dem Namen. Stand frueher fest auf "darueber".
+                IsPrefix = regel?.IsPrefix ?? true,
                 IsOriginal = false,
                 Color = farbe,
                 Glow = glow,

@@ -29,6 +29,14 @@ public sealed class Rule
         return true;
     }
 
+    /// <summary>
+    /// Der Zählerraum, wie er bis Fassung 2 aussah: an der Regel, nicht am Ereignis.
+    ///
+    /// Wird nur noch beim Wandern alter Konfigurationen gebraucht - siehe
+    /// <see cref="CounterScope"/> für das, was heute gilt.
+    /// </summary>
+    public string LegacyCounterId(bool outgoing) => outgoing ? Id + ":given" : Id;
+
     /// <summary>Kanäle, auf die gehört wird. Leer heißt: keiner.</summary>
     public List<ChatChannel> Channels { get; set; } = [];
 
@@ -71,10 +79,34 @@ public sealed class Rule
     public bool ShowName { get; set; } = true;
 
     /// <summary>Mit Namen. Zeigt den Zaehler der ausloesenden Person.</summary>
-    public string PersonalTemplate { get; set; } = "[Name] petted you [Count]x";
+    public string PersonalTemplate { get; set; } = "[Name] petted me [Count]x";
 
     /// <summary>Ohne Namen. Zeigt die Summe ueber alle Personen.</summary>
     public string GeneralTemplate { get; set; } = "petted [Count]x";
+
+    /// <summary>
+    /// Vorlagen fuer die Gegenrichtung - was man selbst getan hat.
+    ///
+    /// Noetig, weil bei <see cref="CountDirection.Both"/> beide Faelle in **eine**
+    /// Regel fallen: "[Name] petted me" waere verkehrt herum, sobald man selbst
+    /// gestreichelt hat. Leer heisst: die normale Vorlage gilt fuer beides - so
+    /// bleiben Regeln aus aelteren Fassungen unveraendert gueltig.
+    /// </summary>
+    public string GivenPersonalTemplate { get; set; } = string.Empty;
+
+    public string GivenGeneralTemplate { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Nur diese Personen loesen die Regel aus, verglichen ueber den Vornamen. Leer
+    /// heisst: jeder.
+    /// </summary>
+    public List<string> OnlyFrom { get; set; } = [];
+
+    /// <summary>
+    /// Ob der Titel ueber dem Namen steht (Prefix) oder darunter (Suffix). Honorific
+    /// kennt beides; frueher war es hart auf "darueber" verdrahtet.
+    /// </summary>
+    public bool IsPrefix { get; set; } = true;
 
     public int DisplaySeconds { get; set; } = 10;
 

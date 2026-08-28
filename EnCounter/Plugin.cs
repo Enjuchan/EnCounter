@@ -63,7 +63,14 @@ public sealed class Plugin : IDalamudPlugin
         emotes = new EmoteWatcher(Interop);
         emotes.OnEmote += HandleEmote;
 
-        window = new ConfigWindow(config, counters, Data, MerkeAenderung);
+        // Der Ordner mit allen Plugin-Konfigurationen - dort liegen auch die von
+        // PatMe und PatMeHonorific, aus denen sich importieren laesst.
+        var konfigOrdner = PluginInterface.ConfigFile.Directory?.FullName ?? string.Empty;
+
+        // Die ContentId trennt die eigenen Charaktere - PatMe fuehrt seine Staende so.
+        window = new ConfigWindow(config, counters, Data, konfigOrdner,
+                                  () => PlayerState.IsLoaded ? PlayerState.ContentId : 0ul,
+                                  MerkeAenderung);
 
         PluginInterface.UiBuilder.Draw += window.Draw;
 
@@ -108,28 +115,59 @@ public sealed class Plugin : IDalamudPlugin
         if (string.IsNullOrEmpty(eigenerName))
             return;
 
-        foreach (var regel in config.Rules)
+        var passende = config.Rules.Where(r => RuleMatcher.Matches(r, e, eigenerName)).ToList();
+        if (passende.Count == 0)
+            return;
+
+        var person = new CounterKey(e.SenderName, e.SenderWorldId);
+        var jetzt = DateTime.UtcNow;
+
+        // Der Zaehler gehoert dem Ereignis, nicht der Regel: Ein Dote landet unter
+        // `e:146`, gleich wie viele Regeln ihn aufgreifen. Deshalb wird je Schluessel
+        // **einmal** erhoeht - sonst zaehlte eine allgemeine und eine persoenliche
+        // Regel denselben Dote doppelt.
+        var schluessel = passende
+            .Select(r => CounterScope.ForEvent(r, e))
+            .Distinct()
+            .ToList();
+
+        var gezaehlt = new HashSet<string>();
+
+        foreach (var s in schluessel)
         {
-            if (!RuleMatcher.Matches(regel, e, eigenerName))
+            // Der kuerzeste Cooldown unter den beteiligten Regeln gewinnt - eine Regel
+            // mit langer Sperre darf eine mit kurzer nicht ausbremsen.
+            var sperre = passende
+                .Where(r => CounterScope.ForEvent(r, e) == s)
+                .Min(r => r.CooldownSeconds);
+
+            if (!cooldowns.Allow(s, person, sperre, jetzt))
                 continue;
 
-            var schluessel = new CounterKey(e.SenderName, e.SenderWorldId);
-
-            // Gebremst heisst: nichts zaehlen, nichts anzeigen, und auch keine spaetere
-            // Regel einspringen lassen - sonst haette ein Makro am Ende doch Wirkung.
-            if (!cooldowns.Allow(regel.Id, schluessel, regel.CooldownSeconds, DateTime.UtcNow))
-                return;
-
-            var persoenlich = counters.Increment(regel.Id, schluessel);
-            var gesamt = counters.GetTotal(regel.Id);
-
-            presenter.Show(
-                TitleTemplate.Build(regel, e.SenderName, persoenlich, gesamt),
-                regel);
-
-            MerkeAenderung();
-            return;   // eine Meldung je Ereignis, die erste passende gewinnt
+            counters.Increment(s, person);
+            gezaehlt.Add(s);
         }
+
+        if (gezaehlt.Count == 0)
+            return;
+
+        MerkeAenderung();
+
+        // Angezeigt wird nur eine Meldung: die der ersten Regel, die tatsaechlich
+        // gezaehlt hat. Was sie zeigt, liest sie aus dem gemeinsamen Stand - eine
+        // neue Regel kennt damit sofort, was vor ihr gezaehlt wurde.
+        var zeigende = passende.FirstOrDefault(r => gezaehlt.Contains(CounterScope.ForEvent(r, e)));
+        if (zeigende is null)
+            return;
+
+        var auswahl = CounterScope.ForRule(zeigende, e.Outgoing);
+
+        presenter.Show(
+            TitleTemplate.Build(zeigende, e.SenderName,
+                                counters.GetPersonal(auswahl, person),
+                                counters.GetTotal(auswahl),
+                                e.Outgoing),
+            zeigende);
     }
 
     /// <summary>Es hat sich etwas geändert; geschrieben wird im nächsten Puls.</summary>

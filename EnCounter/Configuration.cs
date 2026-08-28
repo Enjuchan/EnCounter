@@ -15,8 +15,9 @@ public sealed class Configuration : IPluginConfiguration
     /// <summary>
     /// 1: Zähler hingen am Regelnamen, Platzhalter hieß `[Anzahl]`.
     /// 2: Zähler hängen an <see cref="Rule.Id"/>, Platzhalter heißt `[Count]`.
+    /// 3: Zähler hängen am Ereignis (`e:146`, `t:&lt;3`), nicht mehr an der Regel.
     /// </summary>
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
 
     public int Version { get; set; } = CurrentVersion;
 
@@ -84,12 +85,13 @@ public sealed class Configuration : IPluginConfiguration
             geaendert = true;
         }
 
-        // Stände ohne passende Regel sind Reste gelöschter Regeln. Sie wären ab jetzt
-        // unerreichbar und würden die Datei nur aufblähen.
-        var bekannt = Rules.Select(r => r.Id).ToHashSet();
-        var entfernt = Counters.RemoveAll(e => !bekannt.Contains(e.RuleId));
-        if (entfernt > 0)
+        if (Version < 3 && AufEreignisschluessel())
             geaendert = true;
+
+        // Aufgeräumt wird hier bewusst **nicht** mehr. Seit die Zähler am Ereignis
+        // hängen, gehört ein Stand keiner Regel exklusiv: `e:146` überlebt das
+        // Löschen einer Dote-Regel und ist wieder da, sobald jemand eine neue anlegt.
+        // Das ist der Sinn der Sache - und ein Aufräumer hätte genau das zerstört.
 
         if (Version != CurrentVersion)
         {
@@ -98,6 +100,69 @@ public sealed class Configuration : IPluginConfiguration
         }
 
         return geaendert;
+    }
+
+    /// <summary>
+    /// Trägt Stände von den Regel-Ids auf die Ereignisschlüssel um.
+    ///
+    /// **Zwei Regeln können auf denselben Schlüssel treffen** - eine allgemeine
+    /// „alle Dotes" und eine „nur Rayleigh". Beide haben dasselbe Ereignis gezählt,
+    /// nur unterschiedlich lange. Übernommen wird deshalb der **höhere** Stand: Er
+    /// ist die vollständigere Zählung, und die Summe wäre eine Verdopplung.
+    /// </summary>
+    private bool AufEreignisschluessel()
+    {
+        if (Counters.Count == 0)
+            return false;
+
+        var abbildung = new Dictionary<string, string>();
+
+        foreach (var regel in Rules)
+        {
+            abbildung[regel.LegacyCounterId(false)] = Zielschluessel(regel, false);
+            abbildung[regel.LegacyCounterId(true)] = Zielschluessel(regel, true);
+        }
+
+        var neu = new Dictionary<(string Schluessel, string Person, uint Welt), int>();
+
+        foreach (var eintrag in Counters)
+        {
+            if (!abbildung.TryGetValue(eintrag.RuleId, out var ziel))
+                continue;   // Rest einer gelöschten Regel - nicht mehr zuzuordnen
+
+            var schluessel = (ziel, eintrag.PlayerName, eintrag.WorldId);
+            neu[schluessel] = Math.Max(neu.GetValueOrDefault(schluessel), eintrag.Count);
+        }
+
+        Counters = [.. neu.Select(e => new CounterEntry
+        {
+            RuleId = e.Key.Schluessel,
+            PlayerName = e.Key.Person,
+            WorldId = e.Key.Welt,
+            Count = e.Value,
+        })];
+
+        return true;
+    }
+
+    /// <summary>
+    /// Wohin der alte Stand einer Regel wandert.
+    ///
+    /// Deckt die Regel mehrere Emotes ab, landet alles beim ersten - feiner war die
+    /// alte Zählung nie aufgelöst. Deckt sie *alle* ab, gibt es keinen einzelnen
+    /// Schlüssel; dann bleibt der Stand unter einem eigenen, der aber dasselbe
+    /// Präfix trägt und damit weiterhin mitgezählt wird.
+    /// </summary>
+    private static string Zielschluessel(Rule regel, bool outgoing)
+    {
+        var auswahl = CounterScope.ForRule(regel, outgoing);
+
+        if (auswahl.Prefix is not null)
+            return auswahl.Prefix + "legacy:" + regel.Id + auswahl.Suffix;
+
+        return auswahl.Keys.Count > 0
+            ? auswahl.Keys[0]
+            : CounterScope.RulePrefix + regel.Id + auswahl.Suffix;
     }
 
     /// <summary>
@@ -113,10 +178,11 @@ public sealed class Configuration : IPluginConfiguration
             return false;
 
         // Nummern aus der Emote-Tabelle des Spiels, nicht geraten: Der Emote mit der
-        // Nummer 105 heisst „Pet", sein Textbefehl ist /stroke.
-        Rules.Add(EmoteRegel("Hug", 112, "hugged", "hugged"));
-        Rules.Add(EmoteRegel("Dote", 146, "doted", "doted"));
-        Rules.Add(EmoteRegel("Pet", 105, "petted", "petted"));
+        // Nummer 105 heisst „Pet", sein Textbefehl ist /stroke. Umarmt wird auf zwei
+        // Arten - 112 ist /hug, 113 ist /embrace; beide zaehlen als Umarmung.
+        Rules.Add(EmoteRegel("Hug", [112, 113], "hugged"));
+        Rules.Add(EmoteRegel("Dote", [146], "doted"));
+        Rules.Add(EmoteRegel("Pet", [105], "petted"));
 
         Rules.Add(Neu(new Rule
         {
@@ -144,17 +210,22 @@ public sealed class Configuration : IPluginConfiguration
         return true;
     }
 
-    private static Rule EmoteRegel(string name, uint emoteId, string persoenlich, string allgemein) =>
+    private static Rule EmoteRegel(string name, uint[] emoteIds, string verb) =>
         Neu(new Rule
         {
             Name = name,
             Enabled = true,
             Channels = [ChatChannel.StandardEmote, ChatChannel.CustomEmote],
-            EmoteIds = [emoteId],
+            EmoteIds = [.. emoteIds],
             TriggerTexts = [],
             RequiresOwnName = false,
-            PersonalTemplate = $"[Name] {persoenlich} me [Count]x",
-            GeneralTemplate = $"{allgemein} [Count]x",
+            PersonalTemplate = $"[Name] {verb} me [Count]x",
+            GeneralTemplate = $"{verb} [Count]x",
+
+            // Fuer den Fall, dass jemand auf "beides" umstellt: Dann steht schon da,
+            // was sonst verkehrt herum erschiene.
+            GivenPersonalTemplate = $"{verb} [Name] [Count]x",
+            GivenGeneralTemplate = $"{verb} others [Count]x",
             DisplaySeconds = 10,
         });
 
@@ -184,15 +255,17 @@ public sealed class Configuration : IPluginConfiguration
         return store;
     }
 
+    /// <summary>
+    /// `RuleId` trägt seit Fassung 3 den **Ereignisschlüssel** (`e:146`, `t:&lt;3`),
+    /// nicht mehr die Id einer Regel. `RuleName` bleibt leer - der Stand gehört
+    /// keiner Regel mehr, die man benennen könnte.
+    /// </summary>
     public void FromStore(CounterStore store)
     {
-        var namen = Rules.ToDictionary(r => r.Id, r => r.Name);
-
-        Counters = [.. store.Entries.SelectMany(regel =>
-            regel.Value.Select(person => new CounterEntry
+        Counters = [.. store.Entries.SelectMany(raum =>
+            raum.Value.Select(person => new CounterEntry
             {
-                RuleId = regel.Key,
-                RuleName = namen.GetValueOrDefault(regel.Key, string.Empty),
+                RuleId = raum.Key,
                 PlayerName = person.Key.Name,
                 WorldId = person.Key.WorldId,
                 Count = person.Value,

@@ -72,16 +72,42 @@ public static partial class TitleTemplate
     /// allgemeine genommen - gekuerzt wird nie, weil ein abgeschnittener Titel
     /// schlechter ist als ein kuerzerer.
     /// </summary>
-    public static string Build(Rule rule, string name, int personal, int total)
+    public static string Build(Rule rule, string name, int personal, int total,
+                               bool outgoing = false)
     {
-        if (!rule.ShowName)
-            return Render(rule.GeneralTemplate, null, total);
+        var (mitNamen, ohneNamen) = VorlagenFuer(rule, outgoing);
 
-        var persoenlich = Render(rule.PersonalTemplate, name, personal);
+        if (!rule.ShowName)
+            return Render(ohneNamen, null, total);
+
+        var persoenlich = Render(mitNamen, name, personal);
 
         if (persoenlich.Length <= MaxTitleLength)
             return persoenlich;
 
-        return Render(rule.GeneralTemplate, null, total);
+        return Render(ohneNamen, null, total);
+    }
+
+    /// <summary>
+    /// Welche Vorlagen gelten - die normalen oder die für die Gegenrichtung.
+    ///
+    /// Eine leere Gegenvorlage fällt auf die normale zurück. Damit bleiben Regeln aus
+    /// älteren Fassungen unverändert gültig, und wer nur eine Richtung zählt, muss
+    /// nichts doppelt pflegen.
+    /// </summary>
+    public static (string WithName, string WithoutName) VorlagenFuer(Rule rule, bool outgoing)
+    {
+        if (!outgoing)
+            return (rule.PersonalTemplate, rule.GeneralTemplate);
+
+        var mitNamen = string.IsNullOrWhiteSpace(rule.GivenPersonalTemplate)
+            ? rule.PersonalTemplate
+            : rule.GivenPersonalTemplate;
+
+        var ohneNamen = string.IsNullOrWhiteSpace(rule.GivenGeneralTemplate)
+            ? rule.GeneralTemplate
+            : rule.GivenGeneralTemplate;
+
+        return (mitNamen, ohneNamen);
     }
 }

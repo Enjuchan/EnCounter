@@ -98,6 +98,69 @@ public sealed class CounterStore
             counters[toRuleId] = quelle;
     }
 
+    // --- Sichten über mehrere Schlüssel ----------------------------------------
+    //
+    // Eine Regel steht selten für genau einen Schlüssel: „Hug" umfasst zwei Emotes,
+    // eine Regel ohne Emote-Auswahl gleich alle. Deshalb rechnen die folgenden
+    // Methoden über eine ganze Auswahl.
+
+    /// <summary>Welche gespeicherten Schlüssel zu dieser Auswahl gehören.</summary>
+    public IEnumerable<string> Resolve(CounterScope.Selection auswahl)
+    {
+        if (auswahl.Prefix is null)
+            return auswahl.Keys.Where(counters.ContainsKey);
+
+        return counters.Keys.Where(k => PasstZumPraefix(k, auswahl));
+    }
+
+    /// <summary>
+    /// Beim Präfix muss die Richtung mitgeprüft werden: `e:` fängt sonst auch alles
+    /// ein, was unter `e:146:g` liegt, und Gegebenes zählte als Empfangenes.
+    /// </summary>
+    private static bool PasstZumPraefix(string schluessel, CounterScope.Selection auswahl)
+    {
+        if (!schluessel.StartsWith(auswahl.Prefix!, StringComparison.Ordinal))
+            return false;
+
+        var istGegeben = schluessel.EndsWith(CounterScope.GivenSuffix, StringComparison.Ordinal);
+        var willGegeben = auswahl.Suffix == CounterScope.GivenSuffix;
+
+        return istGegeben == willGegeben;
+    }
+
+    public int GetTotal(CounterScope.Selection auswahl) =>
+        Resolve(auswahl).Sum(GetTotal);
+
+    public int GetPersonal(CounterScope.Selection auswahl, CounterKey key) =>
+        Resolve(auswahl).Sum(k => GetPersonal(k, key));
+
+    /// <summary>Alle Personen einer Auswahl, zusammengefasst, die höchsten zuerst.</summary>
+    public IReadOnlyList<(CounterKey Person, int Count)> GetAll(CounterScope.Selection auswahl)
+    {
+        var zusammen = new Dictionary<CounterKey, int>();
+
+        foreach (var schluessel in Resolve(auswahl))
+            foreach (var (person, anzahl) in counters[schluessel])
+                zusammen[person] = zusammen.GetValueOrDefault(person) + anzahl;
+
+        return [.. zusammen
+            .Select(e => (Person: e.Key, Count: e.Value))
+            .OrderByDescending(e => e.Count)
+            .ThenBy(e => e.Person.Name, StringComparer.CurrentCultureIgnoreCase)];
+    }
+
+    public void Reset(CounterScope.Selection auswahl)
+    {
+        foreach (var schluessel in Resolve(auswahl).ToList())
+            counters.Remove(schluessel);
+    }
+
+    public void Remove(CounterScope.Selection auswahl, CounterKey key)
+    {
+        foreach (var schluessel in Resolve(auswahl).ToList())
+            counters[schluessel].Remove(key);
+    }
+
     /// <summary>Beim Laden aus der Konfiguration.</summary>
     public void Load(Dictionary<string, Dictionary<CounterKey, int>> data)
     {

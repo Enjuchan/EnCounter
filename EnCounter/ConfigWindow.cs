@@ -23,6 +23,8 @@ public sealed class ConfigWindow(
     Configuration config,
     CounterStore counters,
     IDataManager data,
+    string konfigOrdner,
+    Func<ulong> eigeneCid,
     Action save)
 {
     private const uint Warnfarbe = 0xFF3333FFu;
@@ -77,7 +79,17 @@ public sealed class ConfigWindow(
 
     private int ausgewaehlt;
     private string neuerTrigger = string.Empty;
+    private string neuerName = string.Empty;
     private string emoteSuche = string.Empty;
+
+    /// <summary>Gelesener, noch nicht übernommener Import. Null: kein Fenster offen.</summary>
+    private PatMeImport.Fund? importFund;
+
+    /// <summary>
+    /// Ob die Stände aller Charaktere zusammengerechnet werden. Aus, weil EnCounter
+    /// für den zählt, der gerade gespielt wird.
+    /// </summary>
+    private bool importAlle;
 
     public void Draw()
     {
@@ -92,6 +104,30 @@ public sealed class ConfigWindow(
             return;
         }
 
+        // Die Staende stehen oben, nicht in jeder Regel: Sie gehoeren dem Ereignis und
+        // werden von allen Regeln geteilt, die dasselbe abdecken.
+        if (ImGui.BeginTabBar("haupt"))
+        {
+            if (ImGui.BeginTabItem("Rules"))
+            {
+                DrawRegelseite();
+                ImGui.EndTabItem();
+            }
+
+            if (ImGui.BeginTabItem("Counts"))
+            {
+                DrawGlobaleZaehler();
+                ImGui.EndTabItem();
+            }
+
+            ImGui.EndTabBar();
+        }
+
+        ImGui.End();
+    }
+
+    private void DrawRegelseite()
+    {
         DrawLinkeSpalte();
 
         ImGui.SameLine();
@@ -104,8 +140,6 @@ public sealed class ConfigWindow(
             ImGui.TextColored(Graufarbe, "No rule selected.");
 
         ImGui.EndChild();
-
-        ImGui.End();
     }
 
     private Rule? Gewaehlt =>
@@ -139,7 +173,10 @@ public sealed class ConfigWindow(
             // Zaehler und Art stehen klein darunter statt in Klammern dahinter - so
             // bleibt der Name lesbar, auch wenn er lang ist.
             var art = IstEmoteRegel(regel) ? "emotes" : "chat";
-            ImGui.TextColored(Graufarbe, $"      {counters.GetTotal(regel.Id)} counted · {art}");
+            var gesamt = counters.GetTotal(CounterScope.ForRule(regel, false))
+                       + counters.GetTotal(CounterScope.ForRule(regel, true));
+
+            ImGui.TextColored(Graufarbe, $"      {gesamt} counted · {art}");
         }
 
         ImGui.Separator();
@@ -166,16 +203,167 @@ public sealed class ConfigWindow(
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Same settings, own counter, starting at zero.");
 
-        if (ImGui.Button("Delete", new(196, 0)) && Gewaehlt is { } zuLoeschen)
+        if (ImGui.Button("Delete", new(196, 0)) && Gewaehlt is not null)
         {
-            // Der Zaehler haengt an der Id und waere sonst ein Waisenkind in der Datei.
-            counters.Reset(zuLoeschen.Id);
+            // Der Zaehler bleibt stehen: Er gehoert dem Ereignis, nicht dieser Regel.
+            // Eine neue Dote-Regel findet ihren Stand spaeter wieder vor.
             config.Rules.RemoveAt(ausgewaehlt);
             ausgewaehlt = Math.Min(ausgewaehlt, config.Rules.Count - 1);
             save();
         }
 
+        ImGui.Separator();
+
+        if (ImGui.Button("Import...", new(196, 0)))
+        {
+            importFund = PatMeImport.Lesen(konfigOrdner, eigeneCid());
+
+            // Ohne erkennbaren eigenen Charakter bliebe sonst gar nichts uebrig.
+            importAlle = importFund.Eigener is null;
+
+            ImGui.OpenPopup("import");
+        }
+
+        DrawImport();
+
         ImGui.EndChild();
+    }
+
+    /// <summary>
+    /// Zeigt erst, was gefunden wurde, und übernimmt erst auf Knopfdruck. Ein Import,
+    /// der ungefragt Regeln anlegt, ist schwer rückgängig zu machen.
+    /// </summary>
+    private void DrawImport()
+    {
+        var offen = importFund is not null;
+        if (!offen)
+            return;
+
+        ImGui.SetNextWindowSize(new(520, 0), ImGuiCond.Always);
+
+        if (!ImGui.BeginPopupModal("import", ref offen, ImGuiWindowFlags.AlwaysAutoResize))
+        {
+            // Ueber das Kreuz geschlossen.
+            if (!offen)
+                importFund = null;
+
+            return;
+        }
+
+        var fund = importFund!;
+
+        // Zwei getrennte Plugins, zwei Dateien. Wer nur eines installiert hat, soll
+        // sehen, welches fehlt, statt zu raten, warum die Haelfte leer bleibt.
+        ImGui.TextColored(Graufarbe, "Two separate plugins are read:");
+        ImGui.Spacing();
+
+        DrawQuelle("PatMe Honorific", "rules", fund.HonorificGefunden);
+
+        if (fund.HonorificGefunden)
+        {
+            foreach (var regel in fund.Regeln)
+                ImGui.TextColored(Graufarbe, $"      {regel.Name}  \"{regel.GeneralTemplate}\"");
+        }
+
+        ImGui.Spacing();
+
+        DrawQuelle("PatMe", "counts", fund.PatMeGefunden);
+
+        if (fund.PatMeGefunden)
+            DrawImportZahlen(fund);
+
+        if (fund.Leer)
+        {
+            ImGui.Spacing();
+            ImGui.TextColored(Graufarbe, "Nothing to import.");
+        }
+
+        foreach (var hinweis in fund.Hinweise)
+            ImGui.TextColored(Hinweisfarbe, $"! {hinweis}");
+
+        ImGui.Separator();
+
+        if (ImGui.Button("Import", new(120, 0)))
+        {
+            var anzahl = PatMeImport.Anwenden(fund, config.Rules, counters, importAlle);
+
+            if (anzahl > 0)
+            {
+                ausgewaehlt = config.Rules.Count - anzahl;
+                save();
+            }
+
+            importFund = null;
+            ImGui.CloseCurrentPopup();
+        }
+
+        ImGui.SameLine();
+
+        if (ImGui.Button("Cancel", new(120, 0)))
+        {
+            importFund = null;
+            ImGui.CloseCurrentPopup();
+        }
+
+        ImGui.EndPopup();
+    }
+
+    /// <summary>
+    /// Die Zahlen aus PatMe, samt der Wahl, wessen Stände gelten.
+    ///
+    /// PatMe führt je Charakter Buch. Alles zusammenzurechnen wäre bequem und falsch:
+    /// EnCounter zählt für den Charakter, der gerade gespielt wird.
+    /// </summary>
+    private void DrawImportZahlen(PatMeImport.Fund fund)
+    {
+        var eigener = fund.Eigener;
+
+        if (eigener is null)
+        {
+            ImGui.TextColored(Hinweisfarbe, "      current character not found in PatMe");
+        }
+        else
+        {
+            var an = !importAlle;
+            if (ImGui.Checkbox($"Only {eigener.Name}##nurEigener", ref an))
+                importAlle = !an;
+        }
+
+        if (fund.Charaktere.Count > 1)
+        {
+            var alle = importAlle;
+            if (ImGui.Checkbox($"All {fund.Charaktere.Count} characters, summed##alle", ref alle))
+                importAlle = eigener is null || alle;
+        }
+
+        ImGui.Spacing();
+
+        var summen = fund.SummenFuer(importAlle).Where(s => s.Value > 0).ToList();
+
+        if (summen.Count == 0)
+        {
+            ImGui.TextColored(Graufarbe, "      nothing counted yet");
+            return;
+        }
+
+        foreach (var (emote, anzahl) in summen)
+            ImGui.TextColored(Graufarbe, $"      {emote}: {anzahl}");
+
+        ImGui.Spacing();
+        ImGui.TextColored(Hinweisfarbe,
+            $"PatMe does not record who did it, so these arrive as one entry named {PatMeImport.SammelName}.");
+    }
+
+    /// <summary>Eine Importquelle mit ihrem Namen und ob ihre Datei da ist.</summary>
+    private static void DrawQuelle(string plugin, string was, bool gefunden)
+    {
+        ImGui.TextUnformatted($"{plugin}  —  {was}");
+        ImGui.SameLine();
+
+        if (gefunden)
+            ImGui.TextColored(Graufarbe, "found");
+        else
+            ImGui.TextColored(Hinweisfarbe, "not installed");
     }
 
     /// <summary>
@@ -246,12 +434,6 @@ public sealed class ConfigWindow(
             ImGui.EndTabItem();
         }
 
-        if (ImGui.BeginTabItem("Counts"))
-        {
-            DrawZaehler(regel);
-            ImGui.EndTabItem();
-        }
-
         ImGui.EndTabBar();
     }
 
@@ -284,7 +466,47 @@ public sealed class ConfigWindow(
         }
 
         ImGui.Separator();
+        DrawPersonen(regel);
+
+        ImGui.Separator();
         DrawBremse(regel);
+    }
+
+    /// <summary>
+    /// Namensliste: Nur diese Personen lösen die Regel aus. Verglichen wird der
+    /// Vorname — eingetippt werden darf trotzdem der volle Name.
+    /// </summary>
+    private void DrawPersonen(Rule regel)
+    {
+        ImGui.TextUnformatted("Only from");
+
+        ImGui.TextColored(Graufarbe, regel.OnlyFrom.Count == 0
+            ? "Empty: anyone counts."
+            : "Only these people count.");
+
+        for (var i = 0; i < regel.OnlyFrom.Count; i++)
+        {
+            if (ImGui.Button($"x##per{i}"))
+            {
+                regel.OnlyFrom.RemoveAt(i);
+                save();
+                return;
+            }
+
+            ImGui.SameLine();
+            ImGui.TextUnformatted(regel.OnlyFrom[i]);
+        }
+
+        ImGui.SetNextItemWidth(220);
+        ImGui.InputTextWithHint("##newperson", "add a name...", ref neuerName, 64);
+        ImGui.SameLine();
+
+        if (!ImGui.Button("Add##person") || string.IsNullOrWhiteSpace(neuerName))
+            return;
+
+        regel.OnlyFrom.Add(neuerName.Trim());
+        neuerName = string.Empty;
+        save();
     }
 
     /// <summary>
@@ -612,24 +834,38 @@ public sealed class ConfigWindow(
         ImGui.Separator();
         ImGui.TextColored(Graufarbe, "[Name] and [Count] are filled in.");
 
+        var istEmote = IstEmoteRegel(regel);
+        var beideRichtungen = istEmote && regel.Direction == CountDirection.Both;
+
         // Bei ausgehenden Emotes ist [Name] nicht der Urheber, sondern das Ziel - eine
         // Vorlage wie "[Name] hugged me" stuende dann genau verkehrt herum.
-        if (regel.Direction == CountDirection.Given && IstEmoteRegel(regel))
+        if (istEmote && regel.Direction == CountDirection.Given)
             ImGui.TextColored(Hinweisfarbe, "[Name] is the person you emoted, not the sender.");
 
         ImGui.Spacing();
 
-        if (regel.ShowName)
+        if (beideRichtungen)
+            ImGui.TextUnformatted("When they emote you");
+
+        DrawVorlagenpaar(regel,
+            () => regel.PersonalTemplate, v => regel.PersonalTemplate = v,
+            () => regel.GeneralTemplate, v => regel.GeneralTemplate = v,
+            kuerzel: string.Empty, ersatz: null);
+
+        // Bei "beides" faellt sonst eine der beiden Meldungen verkehrt herum aus.
+        // Leer bleiben duerfen die Felder trotzdem - dann gilt die Vorlage von oben.
+        if (beideRichtungen)
         {
-            DrawVorlage("With name", regel.PersonalTemplate, TitleTemplate.MaxPersonalFreeText,
-                        v => regel.PersonalTemplate = v, mitNamen: true);
-
+            ImGui.Separator();
+            ImGui.TextUnformatted("When you emote them");
+            ImGui.TextColored(Graufarbe, "Leave empty to use the templates above.");
             ImGui.Spacing();
-            ImGui.TextColored(Graufarbe, "Fallback if the name makes it too long:");
-        }
 
-        DrawVorlage("Without name", regel.GeneralTemplate, TitleTemplate.MaxTitleLength,
-                    v => regel.GeneralTemplate = v, mitNamen: false);
+            DrawVorlagenpaar(regel,
+                () => regel.GivenPersonalTemplate, v => regel.GivenPersonalTemplate = v,
+                () => regel.GivenGeneralTemplate, v => regel.GivenGeneralTemplate = v,
+                kuerzel: "##given", ersatz: regel);
+        }
 
         ImGui.Separator();
 
@@ -640,6 +876,49 @@ public sealed class ConfigWindow(
             regel.DisplaySeconds = sekunden;
             save();
         }
+
+        // Ueber oder unter dem Namen - Honorific kann beides.
+        ImGui.SetNextItemWidth(220);
+
+        if (!ImGui.BeginCombo("Position", regel.IsPrefix ? "Above the name" : "Below the name"))
+            return;
+
+        if (ImGui.Selectable("Above the name", regel.IsPrefix) && !regel.IsPrefix)
+        {
+            regel.IsPrefix = true;
+            save();
+        }
+
+        if (ImGui.Selectable("Below the name", !regel.IsPrefix) && regel.IsPrefix)
+        {
+            regel.IsPrefix = false;
+            save();
+        }
+
+        ImGui.EndCombo();
+    }
+
+    /// <summary>
+    /// Die zwei Vorlagen einer Richtung. <paramref name="ersatz"/> ist gesetzt, wenn
+    /// leere Felder auf die Vorlagen der Gegenrichtung zurückfallen - dann steht
+    /// darunter, was stattdessen erscheint.
+    /// </summary>
+    private void DrawVorlagenpaar(Rule regel,
+                                  Func<string> mitNamenLesen, Action<string> mitNamenSetzen,
+                                  Func<string> ohneNamenLesen, Action<string> ohneNamenSetzen,
+                                  string kuerzel, Rule? ersatz)
+    {
+        if (regel.ShowName)
+        {
+            DrawVorlage($"With name{kuerzel}", mitNamenLesen(), TitleTemplate.MaxPersonalFreeText,
+                        mitNamenSetzen, mitNamen: true, ersatz: ersatz?.PersonalTemplate);
+
+            ImGui.Spacing();
+            ImGui.TextColored(Graufarbe, "Fallback if the name makes it too long:");
+        }
+
+        DrawVorlage($"Without name{kuerzel}", ohneNamenLesen(), TitleTemplate.MaxTitleLength,
+                    ohneNamenSetzen, mitNamen: false, ersatz: ersatz?.GeneralTemplate);
     }
 
     /// <summary>
@@ -651,7 +930,7 @@ public sealed class ConfigWindow(
     /// welcher Namenslänge** es reicht, statt einer pauschalen Warnung.
     /// </summary>
     private void DrawVorlage(string label, string wert, int grenze, Action<string> setzen,
-                             bool mitNamen)
+                             bool mitNamen, string? ersatz = null)
     {
         var text = wert;
         ImGui.SetNextItemWidth(320);
@@ -659,6 +938,14 @@ public sealed class ConfigWindow(
         {
             setzen(text);
             save();
+        }
+
+        // Leeres Feld mit Rueckfall: Der Zeichenzaehler waere hier nur verwirrend,
+        // gezeigt wird stattdessen, was tatsaechlich erscheint.
+        if (ersatz is not null && string.IsNullOrWhiteSpace(text))
+        {
+            ImGui.TextColored(Graufarbe, $"      uses: {ersatz}");
+            return;
         }
 
         var benutzt = TitleTemplate.FreeTextLength(text);
@@ -782,45 +1069,72 @@ public sealed class ConfigWindow(
     // ---------------------------------------------------------------- Counts
 
     /// <summary>
-    /// Wer wie oft. Nur zum Ansehen und Zurücksetzen - eine tippbare Zahl lädt dazu
-    /// ein, den Stand zu erfinden, und dann steht über dem Kopf eine Behauptung
-    /// statt einer Zählung.
+    /// Alle Stände, regelübergreifend.
+    ///
+    /// Gezählt wird am Ereignis: Ein Dote steht unter „Dote", gleich wie viele Regeln
+    /// ihn aufgreifen. Deshalb steht diese Liste hier oben und nicht in jeder Regel -
+    /// dort wäre viermal dasselbe zu sehen.
+    ///
+    /// Nur zum Ansehen und Zurücksetzen. Eine tippbare Zahl lädt dazu ein, den Stand
+    /// zu erfinden, und dann steht über dem Kopf eine Behauptung statt einer Zählung.
     /// </summary>
-    private void DrawZaehler(Rule regel)
+    private void DrawGlobaleZaehler()
     {
         ImGui.Spacing();
 
-        var eintraege = counters.GetAll(regel.Id);
+        var raeume = counters.Entries
+            .Where(r => r.Value.Count > 0)
+            .Select(r => (Schluessel: r.Key, Gesamt: r.Value.Values.Sum()))
+            .OrderByDescending(r => r.Gesamt)
+            .ThenBy(r => r.Schluessel, StringComparer.Ordinal)
+            .ToList();
 
-        ImGui.TextUnformatted($"{counters.GetTotal(regel.Id)} in total, {eintraege.Count} people");
-
-        if (eintraege.Count > 0)
-        {
-            ImGui.SameLine();
-
-            if (ImGui.Button("Reset all"))
-            {
-                counters.Reset(regel.Id);
-                save();
-                return;
-            }
-        }
-
-        ImGui.Separator();
-
-        if (eintraege.Count == 0)
+        if (raeume.Count == 0)
         {
             ImGui.TextColored(Graufarbe, "Nothing counted yet.");
             return;
         }
 
-        ImGui.BeginChild("zaehlerliste", new(0, 0), true);
+        ImGui.TextColored(Graufarbe,
+            "Counted per event and shared by every rule that covers it.");
 
-        foreach (var (person, anzahl) in eintraege)
+        ImGui.Spacing();
+        ImGui.BeginChild("globalzaehler", new(0, 0));
+
+        foreach (var (schluessel, gesamt) in raeume)
+            DrawZaehlerRaum(schluessel, gesamt);
+
+        ImGui.EndChild();
+    }
+
+    private void DrawZaehlerRaum(string schluessel, int gesamt)
+    {
+        var (name, gegeben) = Beschreibe(schluessel);
+        var richtung = gegeben ? "given by you" : "received";
+
+        // Die Kennung hinter ### haelt den Aufklappzustand fest, auch wenn sich die
+        // Zahl im Titel aendert.
+        if (!ImGui.CollapsingHeader($"{name}   {gesamt}   ({richtung})###{schluessel}"))
+            return;
+
+        ImGui.Indent();
+
+        if (ImGui.Button($"Reset all##{schluessel}"))
         {
-            if (ImGui.Button($"x##del{person.Name}{person.WorldId}"))
+            counters.Reset(schluessel);
+            save();
+            ImGui.Unindent();
+            return;
+        }
+
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Affects every rule that counts this.");
+
+        foreach (var (person, anzahl) in counters.GetAll(schluessel))
+        {
+            if (ImGui.Button($"x##del{schluessel}{person.Name}{person.WorldId}"))
             {
-                counters.Remove(regel.Id, person);
+                counters.Remove(schluessel, person);
                 save();
                 break;
             }
@@ -839,6 +1153,54 @@ public sealed class ConfigWindow(
             ImGui.TextColored(Graufarbe, $"@ {welt}");
         }
 
-        ImGui.EndChild();
+        ImGui.Unindent();
+    }
+
+    /// <summary>
+    /// Aus dem Schlüssel wird wieder etwas Lesbares: `e:146` ist „Dote", `t:&lt;3`
+    /// das Wort selbst. Gespeichert wird die Nummer, weil sie sprachunabhängig ist -
+    /// angezeigt der Name in der Client-Sprache.
+    /// </summary>
+    private (string Name, bool Gegeben) Beschreibe(string schluessel)
+    {
+        var gegeben = schluessel.EndsWith(CounterScope.GivenSuffix, StringComparison.Ordinal);
+
+        var basis = gegeben
+            ? schluessel[..^CounterScope.GivenSuffix.Length]
+            : schluessel;
+
+        const string legacy = CounterScope.EmotePrefix + "legacy:";
+
+        if (basis.StartsWith(legacy, StringComparison.Ordinal))
+            return (Regelname(basis[legacy.Length..], "any emote"), gegeben);
+
+        if (basis.StartsWith(CounterScope.EmotePrefix, StringComparison.Ordinal))
+        {
+            var rest = basis[CounterScope.EmotePrefix.Length..];
+
+            return (uint.TryParse(rest, out var id) ? EmoteCatalog.NameOf(data, id) : rest,
+                    gegeben);
+        }
+
+        if (basis.StartsWith(CounterScope.TextPrefix, StringComparison.Ordinal))
+            return ($"\"{basis[CounterScope.TextPrefix.Length..]}\"", gegeben);
+
+        if (basis.StartsWith(CounterScope.RulePrefix, StringComparison.Ordinal))
+            return (Regelname(basis[CounterScope.RulePrefix.Length..], "any message"), gegeben);
+
+        return (basis, gegeben);
+    }
+
+    /// <summary>
+    /// Name der Regel, an der ein Stand noch hängt. Gelöschte Regeln behalten ihren
+    /// Stand - er ist nur nicht mehr zu benennen.
+    /// </summary>
+    private string Regelname(string id, string zusatz)
+    {
+        var regel = config.Rules.FirstOrDefault(r => r.Id == id);
+
+        return regel is null
+            ? $"deleted rule ({zusatz})"
+            : $"{regel.Name} ({zusatz})";
     }
 }

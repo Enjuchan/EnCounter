@@ -40,6 +40,11 @@ public static class RuleMatcher
             !e.Text.Contains(ownFirstName, StringComparison.CurrentCultureIgnoreCase))
             return false;
 
+        // Namensliste: Nur diese Personen zaehlen. Verglichen wird der Vorname, weil
+        // nur der gespeichert wird - eingetippt werden darf trotzdem der volle Name.
+        if (rule.OnlyFrom.Count > 0 && !rule.OnlyFrom.Any(n => IstDieselbePerson(n, e.SenderName)))
+            return false;
+
         // Keine Triggertexte heisst: der Inhalt ist egal.
         if (rule.TriggerTexts.Count == 0)
             return true;
@@ -60,6 +65,23 @@ public static class RuleMatcher
         CountDirection.Given => outgoing,
         _ => true,
     };
+
+    /// <summary>
+    /// Vergleicht Namen aus der Liste mit dem Absender. Gespeichert wird nur der
+    /// Vorname; wer "Enju Kun" einträgt, meint dieselbe Person wie "Enju".
+    /// </summary>
+    private static bool IstDieselbePerson(string eingetragen, string absender)
+    {
+        if (string.IsNullOrWhiteSpace(eingetragen))
+            return false;
+
+        var vorname = eingetragen.Trim();
+        var leer = vorname.IndexOf(' ');
+        if (leer > 0)
+            vorname = vorname[..leer];
+
+        return string.Equals(vorname, absender, StringComparison.CurrentCultureIgnoreCase);
+    }
 
     private static bool IsEmote(ChatChannel channel) =>
         channel is ChatChannel.StandardEmote or ChatChannel.CustomEmote;

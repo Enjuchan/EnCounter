@@ -18,7 +18,8 @@ channels are watched, what the message says, how long it stays, and in which col
 
 A rule listens either to emotes or to chat — you pick which at the top of its settings,
 and everything below follows from that. `[Name]` and `[Count]` in a template are filled
-in when the title is built.
+in when the title is built, and each rule decides whether its title sits above or below
+your name.
 
 ## Requirements
 
@@ -41,9 +42,23 @@ message text.
 your own name to appear. In tells that requirement is ignored, since those are addressed
 to you anyway.
 
+**Counts belong to the event, not to the rule.** A dote from someone is stored under
+that emote, whichever rule picks it up. Add a second rule later — say, one just for a
+particular person — and it already knows how often they doted you, instead of starting
+at zero. Two rules covering the same thing therefore agree, and a single event is only
+ever counted once.
+
+Deleting a rule leaves its counts alone. They were never its property.
+
+The **Counts** tab lists every event that has ever been counted, most frequent first,
+with the people below it. Resetting there affects every rule that counts the same
+thing — which is the point, and why it says so.
+
 **Counts are per person and permanent.** A rule can show either how often *this* person
-did something, or the total across everyone. The *Counts* tab lists everyone a rule has
-seen, highest first, and lets you reset a single person or the whole rule.
+did something, or the total across everyone.
+
+**Only from** limits a rule to named people. Type the full name if you like; the first
+name is what gets compared.
 
 **Both directions.** An emote rule counts what others aim at you, what you aim at
 others, or both. The counter always belongs to the *other* person — a tally on your own
@@ -52,6 +67,18 @@ name would say nothing.
 **A cooldown per person** keeps a macro from running the number up. Three seconds by
 default; it locks per rule *and* per person, so one busy emoter cannot block everyone
 else. Set it to zero to count every single event.
+
+## Coming from PatMe
+
+*Import...* in the rule list reads two separate plugins: **PatMe Honorific** for its
+rules, **PatMe** for its numbers. It shows what it found and changes nothing until you
+confirm.
+
+PatMe keeps a total per emote and per character of yours, but does not record *who* did
+it. Imported numbers therefore arrive as a single entry rather than pretending to a
+breakdown that never existed. You choose whether to take the character you are playing
+or all of them summed — the former by default, since EnCounter counts for whoever is
+logged in.
 
 ## Title length
 
