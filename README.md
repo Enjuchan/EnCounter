@@ -16,6 +16,10 @@ got love 47x
 Every rule is yours to define. Which emotes count, which words in chat count, which
 channels are watched, what the message says, how long it stays, and in which colours.
 
+A rule listens either to emotes or to chat — you pick which at the top of its settings,
+and everything below follows from that. `[Name]` and `[Count]` in a template are filled
+in when the title is built.
+
 ## Requirements
 
 **Honorific is required.** EnCounter does not draw anything itself — it hands the title
@@ -38,7 +42,16 @@ your own name to appear. In tells that requirement is ignored, since those are a
 to you anyway.
 
 **Counts are per person and permanent.** A rule can show either how often *this* person
-did something, or the total across everyone.
+did something, or the total across everyone. The *Counts* tab lists everyone a rule has
+seen, highest first, and lets you reset a single person or the whole rule.
+
+**Both directions.** An emote rule counts what others aim at you, what you aim at
+others, or both. The counter always belongs to the *other* person — a tally on your own
+name would say nothing.
+
+**A cooldown per person** keeps a macro from running the number up. Three seconds by
+default; it locks per rule *and* per person, so one busy emoter cannot block everyone
+else. Set it to zero to count every single event.
 
 ## Title length
 
