@@ -16,8 +16,9 @@ public sealed class Configuration : IPluginConfiguration
     /// 1: Zähler hingen am Regelnamen, Platzhalter hieß `[Anzahl]`.
     /// 2: Zähler hängen an <see cref="Rule.Id"/>, Platzhalter heißt `[Count]`.
     /// 3: Zähler hängen am Ereignis (`e:146`, `t:&lt;3`), nicht mehr an der Regel.
+    /// 4: Reste des PatMe-Imports entfernt, der noch unter Regel-Ids ablegte.
     /// </summary>
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 4;
 
     public int Version { get; set; } = CurrentVersion;
 
@@ -88,6 +89,9 @@ public sealed class Configuration : IPluginConfiguration
         if (Version < 3 && AufEreignisschluessel())
             geaendert = true;
 
+        if (Version < 4 && EntferneImportReste())
+            geaendert = true;
+
         // Aufgeräumt wird hier bewusst **nicht** mehr. Seit die Zähler am Ereignis
         // hängen, gehört ein Stand keiner Regel exklusiv: `e:146` überlebt das
         // Löschen einer Dote-Regel und ist wieder da, sobald jemand eine neue anlegt.
@@ -100,6 +104,27 @@ public sealed class Configuration : IPluginConfiguration
         }
 
         return geaendert;
+    }
+
+    /// <summary>
+    /// Entfernt Stände, deren Schlüssel keiner ist.
+    ///
+    /// In 0.3.0.0 legte der PatMe-Import weiterhin unter der Id einer Regel ab, obwohl
+    /// die Schlüssel da schon am Ereignis hingen. Solche Einträge lassen sich keinem
+    /// Ereignis mehr zuordnen und erscheinen in der Übersicht als roher Guid.
+    ///
+    /// Das ist die einzige Stelle, an der überhaupt noch Stände entfernt werden -
+    /// hier geht es um nachweislich falsche Einträge, nicht um vermeintlich
+    /// verwaiste.
+    /// </summary>
+    private bool EntferneImportReste()
+    {
+        var entfernt = Counters.RemoveAll(e =>
+            !e.RuleId.StartsWith(CounterScope.EmotePrefix, StringComparison.Ordinal) &&
+            !e.RuleId.StartsWith(CounterScope.TextPrefix, StringComparison.Ordinal) &&
+            !e.RuleId.StartsWith(CounterScope.RulePrefix, StringComparison.Ordinal));
+
+        return entfernt > 0;
     }
 
     /// <summary>

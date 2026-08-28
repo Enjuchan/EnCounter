@@ -252,25 +252,19 @@ public sealed class ConfigWindow(
 
         var fund = importFund!;
 
-        // Zwei getrennte Plugins, zwei Dateien. Wer nur eines installiert hat, soll
-        // sehen, welches fehlt, statt zu raten, warum die Haelfte leer bleibt.
-        ImGui.TextColored(Graufarbe, "Two separate plugins are read:");
+        ImGui.TextColored(Graufarbe, "Adds counts to the shared list. No rules are created.");
         ImGui.Spacing();
 
-        DrawQuelle("PatMe Honorific", "rules", fund.HonorificGefunden);
+        DrawQuelle("PatMe", fund.PatMeGefunden, fund.HatAus("PatMe"));
+        DrawQuelle("PatMe Honorific", fund.HonorificGefunden, fund.HatAus("PatMe Honorific"));
 
-        if (fund.HonorificGefunden)
-        {
-            foreach (var regel in fund.Regeln)
-                ImGui.TextColored(Graufarbe, $"      {regel.Name}  \"{regel.GeneralTemplate}\"");
-        }
+        // Beide zaehlen dasselbe, nur unterschiedlich lange - Honorific erst seit
+        // seiner Aktivierung. Der hoehere Stand gilt, sonst zaehlte ein Dote doppelt.
+        if (fund.HatAus("PatMe") && fund.HatAus("PatMe Honorific"))
+            ImGui.TextColored(Graufarbe, "Both count the same things - the higher number wins.");
 
         ImGui.Spacing();
-
-        DrawQuelle("PatMe", "counts", fund.PatMeGefunden);
-
-        if (fund.PatMeGefunden)
-            DrawImportZahlen(fund);
+        DrawImportZahlen(fund);
 
         if (fund.Leer)
         {
@@ -285,13 +279,8 @@ public sealed class ConfigWindow(
 
         if (ImGui.Button("Import", new(120, 0)))
         {
-            var anzahl = PatMeImport.Anwenden(fund, config.Rules, counters, importAlle);
-
-            if (anzahl > 0)
-            {
-                ausgewaehlt = config.Rules.Count - anzahl;
+            if (PatMeImport.Anwenden(fund, counters, importAlle) > 0)
                 save();
-            }
 
             importFund = null;
             ImGui.CloseCurrentPopup();
@@ -338,32 +327,58 @@ public sealed class ConfigWindow(
 
         ImGui.Spacing();
 
-        var summen = fund.SummenFuer(importAlle).Where(s => s.Value > 0).ToList();
+        var uebernehmbar = fund.Uebernehmbar(importAlle).ToList();
 
-        if (summen.Count == 0)
+        if (uebernehmbar.Count == 0)
         {
             ImGui.TextColored(Graufarbe, "      nothing counted yet");
             return;
         }
 
-        foreach (var (emote, anzahl) in summen)
-            ImGui.TextColored(Graufarbe, $"      {emote}: {anzahl}");
+        foreach (var posten in uebernehmbar)
+        {
+            var richtung = posten.Gegeben ? "given" : "received";
+
+            ImGui.TextColored(Graufarbe,
+                $"      {EmoteCatalog.NameOf(data, posten.EmoteId)}: {posten.Anzahl} {richtung}");
+
+            // Sind die Quellen sich uneinig, steht dahinter, was jede sagt - die Wahl
+            // des hoeheren Werts ist eine Wette, und die soll man sehen koennen.
+            if (!posten.Uneinig)
+                continue;
+
+            ImGui.SameLine();
+            ImGui.TextColored(Hinweisfarbe,
+                "(" + string.Join(", ", posten.Quellen.Select(q => $"{q.Quelle} {q.Wert}")) + ")");
+        }
 
         ImGui.Spacing();
         ImGui.TextColored(Hinweisfarbe,
             $"PatMe does not record who did it, so these arrive as one entry named {PatMeImport.SammelName}.");
+
+        ImGui.TextColored(Graufarbe, "Importing again replaces that entry - it never adds up twice.");
     }
 
-    /// <summary>Eine Importquelle mit ihrem Namen und ob ihre Datei da ist.</summary>
-    private static void DrawQuelle(string plugin, string was, bool gefunden)
+    /// <summary>
+    /// Eine Importquelle: ob ihre Datei da ist und ob etwas darin steht. Beides
+    /// getrennt, weil „installiert, zählt aber nicht" der häufigere Fall ist - PatMe
+    /// Honorific führt erst Buch, seit es läuft.
+    /// </summary>
+    private static void DrawQuelle(string plugin, bool gefunden, bool hatZahlen)
     {
-        ImGui.TextUnformatted($"{plugin}  —  {was}");
+        ImGui.TextUnformatted($"{plugin}");
         ImGui.SameLine();
 
-        if (gefunden)
+        if (!gefunden)
+        {
+            ImGui.TextColored(Hinweisfarbe, "not installed");
+            return;
+        }
+
+        if (hatZahlen)
             ImGui.TextColored(Graufarbe, "found");
         else
-            ImGui.TextColored(Hinweisfarbe, "not installed");
+            ImGui.TextColored(Hinweisfarbe, "found, but has not counted anything");
     }
 
     /// <summary>
@@ -1082,79 +1097,176 @@ public sealed class ConfigWindow(
     {
         ImGui.Spacing();
 
-        var raeume = counters.Entries
-            .Where(r => r.Value.Count > 0)
-            .Select(r => (Schluessel: r.Key, Gesamt: r.Value.Values.Sum()))
-            .OrderByDescending(r => r.Gesamt)
-            .ThenBy(r => r.Schluessel, StringComparer.Ordinal)
-            .ToList();
-
-        if (raeume.Count == 0)
+        if (counters.Entries.All(r => r.Value.Count == 0))
         {
             ImGui.TextColored(Graufarbe, "Nothing counted yet.");
             return;
         }
 
-        ImGui.TextColored(Graufarbe,
-            "Counted per event and shared by every rule that covers it.");
-
-        ImGui.Spacing();
         ImGui.BeginChild("globalzaehler", new(0, 0));
 
-        foreach (var (schluessel, gesamt) in raeume)
-            DrawZaehlerRaum(schluessel, gesamt);
+        DrawUeberschrift("Totals");
+        ImGui.TextColored(Graufarbe, "Every event, both directions at a glance.");
+        ImGui.Spacing();
+        DrawGesamtzahlen();
+
+        ImGui.Spacing();
+        DrawUeberschrift("Received  —  per person");
+        DrawPersonenliste(gegeben: false);
+
+        ImGui.Spacing();
+        DrawUeberschrift("Given  —  per person");
+        DrawPersonenliste(gegeben: true);
 
         ImGui.EndChild();
     }
 
-    private void DrawZaehlerRaum(string schluessel, int gesamt)
+    /// <summary>
+    /// Deutlich abgesetzte Abschnittsüberschrift. `SeparatorText` gibt es in diesen
+    /// Bindings nicht, also Linie und Text von Hand.
+    /// </summary>
+    private static void DrawUeberschrift(string text)
     {
-        var (name, gegeben) = Beschreibe(schluessel);
-        var richtung = gegeben ? "given by you" : "received";
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.TextUnformatted(text);
+        ImGui.Separator();
+        ImGui.Spacing();
+    }
 
-        // Die Kennung hinter ### haelt den Aufklappzustand fest, auch wenn sich die
-        // Zahl im Titel aendert.
-        if (!ImGui.CollapsingHeader($"{name}   {gesamt}   ({richtung})###{schluessel}"))
+    /// <summary>Ein Ereignis je Zeile, empfangen und gegeben nebeneinander.</summary>
+    private void DrawGesamtzahlen()
+    {
+        var basen = counters.Entries.Keys
+            .Select(Basisschluessel)
+            .Distinct()
+            .Select(b => (Basis: b,
+                          Empfangen: counters.GetTotal(b),
+                          Gegeben: counters.GetTotal(b + CounterScope.GivenSuffix)))
+            .Where(z => z.Empfangen > 0 || z.Gegeben > 0)
+            .OrderByDescending(z => z.Empfangen + z.Gegeben)
+            .ToList();
+
+        if (!ImGui.BeginTable("gesamt", 4, ImGuiTableFlags.RowBg))
             return;
 
-        ImGui.Indent();
+        ImGui.TableSetupColumn("##name");
+        ImGui.TableSetupColumn("##recv");
+        ImGui.TableSetupColumn("##giv");
+        ImGui.TableSetupColumn("##reset");
 
-        if (ImGui.Button($"Reset all##{schluessel}"))
+        foreach (var (basis, empfangen, gegeben) in basen)
         {
-            counters.Reset(schluessel);
-            save();
-            ImGui.Unindent();
-            return;
-        }
+            ImGui.TableNextRow();
 
-        if (ImGui.IsItemHovered())
-            ImGui.SetTooltip("Affects every rule that counts this.");
+            ImGui.TableNextColumn();
+            ImGui.TextUnformatted(Beschreibe(basis).Name);
 
-        foreach (var (person, anzahl) in counters.GetAll(schluessel))
-        {
-            if (ImGui.Button($"x##del{schluessel}{person.Name}{person.WorldId}"))
-            {
-                counters.Remove(schluessel, person);
-                save();
-                break;
-            }
+            ImGui.TableNextColumn();
+            if (empfangen > 0)
+                ImGui.TextUnformatted($"{empfangen} received");
+            else
+                ImGui.TextColored(Graufarbe, "-");
 
-            if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Reset this person to zero.");
+            ImGui.TableNextColumn();
+            if (gegeben > 0)
+                ImGui.TextUnformatted($"{gegeben} given");
+            else
+                ImGui.TextColored(Graufarbe, "-");
 
-            ImGui.SameLine();
-            ImGui.TextUnformatted($"{anzahl,5}   {person.Name}");
+            ImGui.TableNextColumn();
 
-            var welt = WorldCatalog.NameOf(data, person.WorldId);
-            if (string.IsNullOrEmpty(welt))
+            if (!ImGui.Button($"Reset##ges{basis}"))
                 continue;
 
-            ImGui.SameLine();
-            ImGui.TextColored(Graufarbe, $"@ {welt}");
+            counters.Reset(basis);
+            counters.Reset(basis + CounterScope.GivenSuffix);
+            save();
+            break;
         }
 
-        ImGui.Unindent();
+        ImGui.EndTable();
     }
+
+    /// <summary>
+    /// Wer wie oft - über alle Ereignisse einer Richtung zusammengefasst, aufklappbar
+    /// bis auf das einzelne Emote.
+    /// </summary>
+    private void DrawPersonenliste(bool gegeben)
+    {
+        var proPerson = new Dictionary<CounterKey, List<(string Basis, int Anzahl)>>();
+
+        foreach (var (schluessel, staende) in counters.Entries)
+        {
+            if (IstGegeben(schluessel) != gegeben)
+                continue;
+
+            foreach (var (person, anzahl) in staende)
+            {
+                if (anzahl <= 0)
+                    continue;
+
+                if (!proPerson.TryGetValue(person, out var liste))
+                    proPerson[person] = liste = [];
+
+                liste.Add((Basisschluessel(schluessel), anzahl));
+            }
+        }
+
+        if (proPerson.Count == 0)
+        {
+            ImGui.TextColored(Graufarbe, gegeben
+                ? "You have not emoted anyone yet."
+                : "Nobody has emoted you yet.");
+
+            return;
+        }
+
+        var kuerzel = gegeben ? "g" : "r";
+
+        foreach (var (person, eintraege) in proPerson.OrderByDescending(p => p.Value.Sum(e => e.Anzahl)))
+        {
+            var welt = WorldCatalog.NameOf(data, person.WorldId);
+            var wo = string.IsNullOrEmpty(welt) ? string.Empty : $" @ {welt}";
+            var summe = eintraege.Sum(e => e.Anzahl);
+
+            // Die Kennung hinter ### haelt den Aufklappzustand fest, auch wenn sich
+            // die Zahl im Titel aendert.
+            if (!ImGui.CollapsingHeader(
+                    $"{person.Name}{wo}   {summe}###{kuerzel}{person.Name}{person.WorldId}"))
+                continue;
+
+            ImGui.Indent();
+
+            foreach (var (basis, anzahl) in eintraege.OrderByDescending(e => e.Anzahl))
+            {
+                var schluessel = gegeben ? basis + CounterScope.GivenSuffix : basis;
+
+                if (ImGui.Button($"x##{kuerzel}{schluessel}{person.Name}{person.WorldId}"))
+                {
+                    counters.Remove(schluessel, person);
+                    save();
+                    break;
+                }
+
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Reset this person for this event.");
+
+                ImGui.SameLine();
+                ImGui.TextUnformatted($"{anzahl,5}   {Beschreibe(basis).Name}");
+            }
+
+            ImGui.Unindent();
+        }
+    }
+
+    private static bool IstGegeben(string schluessel) =>
+        schluessel.EndsWith(CounterScope.GivenSuffix, StringComparison.Ordinal);
+
+    private static string Basisschluessel(string schluessel) =>
+        IstGegeben(schluessel)
+            ? schluessel[..^CounterScope.GivenSuffix.Length]
+            : schluessel;
 
     /// <summary>
     /// Aus dem Schlüssel wird wieder etwas Lesbares: `e:146` ist „Dote", `t:&lt;3`

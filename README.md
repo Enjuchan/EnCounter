@@ -50,9 +50,10 @@ ever counted once.
 
 Deleting a rule leaves its counts alone. They were never its property.
 
-The **Counts** tab lists every event that has ever been counted, most frequent first,
-with the people below it. Resetting there affects every rule that counts the same
-thing — which is the point, and why it says so.
+The **Counts** tab has three parts: totals per event with both directions side by side,
+then everyone who has emoted you, then everyone you have emoted. Each person opens up
+to show which emotes make up their number. Resetting there affects every rule that
+counts the same thing — which is the point, and why it says so.
 
 **Counts are per person and permanent.** A rule can show either how often *this* person
 did something, or the total across everyone.
@@ -70,15 +71,21 @@ else. Set it to zero to count every single event.
 
 ## Coming from PatMe
 
-*Import...* in the rule list reads two separate plugins: **PatMe Honorific** for its
-rules, **PatMe** for its numbers. It shows what it found and changes nothing until you
-confirm.
+*Import...* in the rule list takes counts from **PatMe** and **PatMe Honorific** into
+the shared list. It creates no rules — what you make of those numbers is yours to
+decide. Nothing changes until you confirm, and importing twice replaces the entry
+rather than adding it up again.
 
-PatMe keeps a total per emote and per character of yours, but does not record *who* did
-it. Imported numbers therefore arrive as a single entry rather than pretending to a
-breakdown that never existed. You choose whether to take the character you are playing
-or all of them summed — the former by default, since EnCounter counts for whoever is
-logged in.
+Neither plugin records *who* did it, so imported numbers arrive as a single entry
+rather than pretending to a breakdown that never existed. You choose whether to take
+the character you are playing or all of them summed — the former by default, since
+EnCounter counts for whoever is logged in.
+
+The two sources overlap: PatMe counts by emote *name* and has no notion of direction,
+while PatMe Honorific counts by emote number and direction but only since it was
+switched on. Where they disagree, **the higher number wins**, and the dialog shows what
+each source said. Adding them would double every emote both plugins saw; the file has
+no timestamps to do better. The lower guess invents nothing.
 
 ## Title length
 

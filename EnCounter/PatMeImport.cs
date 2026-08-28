@@ -1,19 +1,24 @@
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using EnCounter.Core;
 
 namespace EnCounter;
 
 /// <summary>
-/// Übernimmt Regeln und Zählerstände aus PatMe und PatMeHonorific.
+/// Übernimmt Zählerstände aus PatMe und PatMe Honorific.
 ///
-/// **Was übernommen werden kann und was nicht:** PatMeHonorific hält Regeln, die den
-/// unseren ähneln - Emote-Nummern, Vorlage, Prefix, Richtung. PatMe hält die Zahlen,
-/// aber nur als **Summe je Emote und eigenem Charakter**; wer wie oft geemotet hat,
-/// weiß es nicht. Importierte Stände landen deshalb unter einer Sammelperson, statt
-/// eine Aufschlüsselung vorzutäuschen, die es nie gab.
+/// **Nur Zahlen, keine Regeln.** Der Import trägt in die gemeinsame Liste ein, was
+/// dort gezählt wurde; welche Regeln daraus etwas machen, entscheidet man selbst.
+///
+/// **Zwei Quellen, die sich überschneiden.** PatMe zählt seit jeher, aber nur nach
+/// Emote-*Namen* und ohne Richtung. PatMe Honorific zählt erst seit seiner
+/// Aktivierung, dafür nach Emote-Nummer und Richtung getrennt - es kennt damit Emotes,
+/// die PatMe zusammenwirft. Bei Überschneidung gilt der **höhere** Stand: Beide haben
+/// dasselbe gezählt, nur unterschiedlich lange.
+///
+/// **Wer geemotet hat, weiß keine der beiden.** Importiertes landet deshalb unter
+/// einer Sammelperson, statt eine Aufschlüsselung vorzutäuschen, die es nie gab.
 /// </summary>
-public static partial class PatMeImport
+public static class PatMeImport
 {
     /// <summary>Unter diesem Namen liegen importierte Summen im Zähler.</summary>
     public const string SammelName = "(imported)";
@@ -23,78 +28,83 @@ public static partial class PatMeImport
     /// einzutragen ist verlässlicher, als sie über die Spieltabelle zu suchen: Bei
     /// einem deutschen Client heißt der Emote „Streicheln" und würde nie gefunden.
     ///
-    /// „Hug" umfasst zwei Emotes - 112 `/hug` und 113 `/embrace`. PatMeHonorific
-    /// zählt beide zusammen, und das ist richtig so.
+    /// „Hug" steht dort für zwei Emotes - 112 `/hug` und 113 `/embrace`. Aufteilen
+    /// lässt sich die Summe nicht, sie landet ganz beim ersten. PatMe Honorific führt
+    /// beide getrennt und ist dort die bessere Quelle.
     /// </summary>
-    private static readonly Dictionary<string, uint[]> PatMeEmotes = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly Dictionary<string, uint> PatMeEmotes = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["Pet"] = [105],
-        ["Dote"] = [146],
-        ["Hug"] = [112, 113],
+        ["Pet"] = 105,
+        ["Dote"] = 146,
+        ["Hug"] = 112,
     };
 
-    [GeneratedRegex(@"\{\{\s*(\w+)\s*\}\}")]
-    private static partial Regex ScribanPlatzhalter();
+    /// <summary>Ein gefundener Stand, schon auf Emote-Nummern gebracht.</summary>
+    public sealed record Stand(uint EmoteId, bool Gegeben, ulong Cid, int Anzahl, string Quelle);
 
-    /// <summary>
-    /// Das Ergebnis beider Quellen. Sie sind **zwei getrennte Plugins**: Die Regeln
-    /// stehen in PatMeHonorific, die Zahlen in PatMe. Wer nur eines davon installiert
-    /// hat, soll sehen, welches fehlt, statt zu rätseln, warum die Hälfte leer ist.
-    /// </summary>
-    /// <summary>Ein Charakter aus PatMe mit seinen Ständen.</summary>
-    public sealed record Charakter(ulong Cid, string Name, Dictionary<string, int> Zaehler)
-    {
-        public int Gesamt => Zaehler.Values.Sum();
-    }
+    /// <summary>Ein Charakter, wie ihn PatMe benennt.</summary>
+    public sealed record Charakter(ulong Cid, string Name);
 
     public sealed record Fund(
-        List<Rule> Regeln,
+        List<Stand> Staende,
         List<Charakter> Charaktere,
         ulong EigeneCid,
         List<string> Hinweise,
         bool HonorificGefunden,
         bool PatMeGefunden)
     {
-        /// <summary>
-        /// Der gerade gespielte Charakter, falls PatMe ihn kennt. Null heißt: nicht
-        /// eingeloggt, oder dieser Charakter hat dort noch nie gezählt.
-        /// </summary>
         public Charakter? Eigener =>
             EigeneCid == 0 ? null : Charaktere.FirstOrDefault(c => c.Cid == EigeneCid);
 
-        public bool Leer => Regeln.Count == 0 && Charaktere.Count == 0;
+        public bool Leer => Staende.All(s => s.Anzahl <= 0);
+
+        /// <summary>Welche Quellen tatsächlich etwas beigetragen haben.</summary>
+        public bool HatAus(string quelle) => Staende.Any(s => s.Quelle == quelle && s.Anzahl > 0);
+
+        /// <summary>Was übernommen würde, samt dem, was jede Quelle dazu sagt.</summary>
+        public sealed record Posten(uint EmoteId, bool Gegeben, int Anzahl,
+                                    IReadOnlyList<(string Quelle, int Wert)> Quellen)
+        {
+            /// <summary>Sind sich die Quellen uneinig? Dann lohnt ein Blick.</summary>
+            public bool Uneinig => Quellen.Count > 1 && Quellen.Select(q => q.Wert).Distinct().Count() > 1;
+        }
 
         /// <summary>
-        /// Die Stände, die übernommen werden. Voreingestellt ist der eigene Charakter:
-        /// EnCounter zählt für den, der gerade gespielt wird, und die Stände fremder
-        /// Charaktere hier hineinzurechnen wäre eine stille Fälschung.
+        /// Was übernommen würde: je Emote und Richtung eine Zahl.
+        ///
+        /// Innerhalb einer Quelle werden die gewählten Charaktere summiert, über die
+        /// Quellen hinweg gilt der **höhere** Wert.
+        ///
+        /// Richtig ist das nicht immer: Lief PatMe eine Weile nicht und Honorific
+        /// schon, fehlt dem einen genau dieser Zeitraum, und das Maximum liegt zu
+        /// niedrig. Die Summe wäre aber falscher, sobald beide gleichzeitig liefen -
+        /// dann zählte jedes Emote doppelt. Zeitstempel gibt es in keiner der Dateien,
+        /// also bleibt eine Wette. Die auf die kleinere Zahl erfindet wenigstens
+        /// nichts.
         /// </summary>
-        public Dictionary<string, int> SummenFuer(bool alleCharaktere)
+        public IEnumerable<Posten> Uebernehmbar(bool alleCharaktere)
         {
-            var quelle = alleCharaktere
-                ? Charaktere
-                : Eigener is { } eigener ? [eigener] : new List<Charakter>();
+            var gewaehlt = alleCharaktere
+                ? null
+                : Eigener?.Cid ?? (EigeneCid == 0 ? null : EigeneCid);
 
-            var summen = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var jeQuelle = Staende
+                .Where(s => s.Anzahl > 0 && (gewaehlt is null || s.Cid == gewaehlt))
+                .GroupBy(s => (s.EmoteId, s.Gegeben, s.Quelle))
+                .Select(g => (g.Key.EmoteId, g.Key.Gegeben, g.Key.Quelle, Summe: g.Sum(s => s.Anzahl)));
 
-            foreach (var c in quelle)
-                foreach (var (name, wert) in c.Zaehler)
-                    summen[name] = summen.GetValueOrDefault(name) + wert;
-
-            return summen;
+            return jeQuelle
+                .GroupBy(x => (x.EmoteId, x.Gegeben))
+                .Select(g => new Posten(
+                    g.Key.EmoteId,
+                    g.Key.Gegeben,
+                    g.Max(x => x.Summe),
+                    [.. g.Select(x => (x.Quelle, x.Summe)).OrderBy(x => x.Quelle)]))
+                .OrderBy(p => p.Gegeben)
+                .ThenByDescending(p => p.Anzahl);
         }
     }
 
-    /// <summary>
-    /// Liest beide Dateien, ohne etwas zu verändern. Fehlende Dateien sind kein
-    /// Fehler - dann gibt es eben nichts zu holen.
-    /// </summary>
-    /// <summary>
-    /// Liest beide Dateien, ohne etwas zu verändern.
-    ///
-    /// <paramref name="eigeneCid"/> ist die ContentId des gerade gespielten
-    /// Charakters, 0 wenn nicht eingeloggt.
-    /// </summary>
     public static Fund Lesen(string konfigOrdner, ulong eigeneCid)
     {
         var hinweise = new List<string>();
@@ -102,201 +112,45 @@ public static partial class PatMeImport
         var honorificDatei = Path.Combine(konfigOrdner, "PatMeHonorific.json");
         var patMeDatei = Path.Combine(konfigOrdner, "PatMe.json");
 
-        var regeln = LiesRegeln(honorificDatei, hinweise);
-        var charaktere = LiesCharaktere(patMeDatei, hinweise);
+        var staende = new List<Stand>();
+        var charaktere = LiesPatMe(patMeDatei, staende, hinweise);
 
-        var fund = new Fund(regeln, charaktere, eigeneCid, hinweise,
-                            File.Exists(honorificDatei), File.Exists(patMeDatei));
+        LiesHonorific(honorificDatei, staende, hinweise);
 
-        // Zaehler ohne passende Regel waeren verloren. Fuer die bekannten Emotes laesst
-        // sich eine Regel nachlegen, damit die Zahl ein Zuhause hat. Geprueft wird
-        // gegen alle Charaktere, damit die Regel auch dann entsteht, wenn nur ein
-        // anderer Charakter dort Staende hat.
-        foreach (var (emote, anzahl) in fund.SummenFuer(alleCharaktere: true))
-        {
-            if (anzahl <= 0 || !PatMeEmotes.TryGetValue(emote, out var ids))
-                continue;
-
-            if (regeln.Any(r => r.EmoteIds.Intersect(ids).Any()))
-                continue;
-
-            regeln.Add(EmoteRegel(emote, ids));
-            hinweise.Add($"No PatMe Honorific rule for {emote} - a plain one was created.");
-        }
-
-        if (charaktere.Count > 0 && eigeneCid == 0)
+        if (staende.Count > 0 && eigeneCid == 0)
             hinweise.Add("Not logged in - the current character cannot be told apart.");
-        else if (charaktere.Count > 0 && fund.Eigener is null)
-            hinweise.Add("PatMe has no counts for the character you are playing.");
+        else if (staende.Count > 0 && staende.All(s => s.Cid != eigeneCid))
+            hinweise.Add("Neither plugin has counts for the character you are playing.");
 
-        return fund;
+        return new Fund(staende, charaktere, eigeneCid, hinweise,
+                        File.Exists(honorificDatei), File.Exists(patMeDatei));
     }
 
     /// <summary>
-    /// Trägt den Fund ein. Vorhandene Regeln bleiben unberührt.
-    ///
-    /// Nimmt bewusst die Regelliste statt der ganzen Konfiguration - so kommt diese
-    /// Klasse ohne Dalamud aus und lässt sich gegen echte Dateien prüfen.
+    /// Trägt die Stände unter der Sammelperson ein - **gesetzt, nicht addiert**.
+    /// Zweimal importieren verdoppelt damit nichts, und was echte Personen beigetragen
+    /// haben, bleibt unberührt.
     /// </summary>
-    public static int Anwenden(Fund fund, List<Rule> regeln, CounterStore counters,
-                               bool alleCharaktere)
+    public static int Anwenden(Fund fund, CounterStore counters, bool alleCharaktere)
     {
-        var summen = fund.SummenFuer(alleCharaktere);
-        var uebernommen = 0;
+        var person = new CounterKey(SammelName, 0);
+        var eingetragen = 0;
 
-        foreach (var regel in fund.Regeln)
+        foreach (var posten in fund.Uebernehmbar(alleCharaktere))
         {
-            regel.EnsureId();
-            regeln.Add(regel);
-            uebernommen++;
+            var schluessel = CounterScope.EmotePrefix + posten.EmoteId +
+                             (posten.Gegeben ? CounterScope.GivenSuffix : string.Empty);
 
-            var anzahl = PassendeSumme(summen, regel.EmoteIds);
-            if (anzahl > 0)
-                counters.Set(regel.Id, new CounterKey(SammelName, 0), anzahl);
+            counters.Set(schluessel, person, posten.Anzahl);
+            eingetragen++;
         }
 
-        return uebernommen;
-    }
-
-    private static int PassendeSumme(Dictionary<string, int> summen, List<uint> emoteIds)
-    {
-        foreach (var (name, anzahl) in summen)
-        {
-            if (!PatMeEmotes.TryGetValue(name, out var ids))
-                continue;
-
-            if (emoteIds.Intersect(ids).Any())
-                return anzahl;
-        }
-
-        return 0;
-    }
-
-    // ------------------------------------------------------- PatMeHonorific
-
-    private static List<Rule> LiesRegeln(string pfad, List<string> hinweise)
-    {
-        var regeln = new List<Rule>();
-
-        if (!File.Exists(pfad))
-            return regeln;
-
-        try
-        {
-            using var datei = JsonDocument.Parse(File.ReadAllText(pfad));
-
-            if (!datei.RootElement.TryGetProperty("EmoteConfigs", out var liste))
-                return regeln;
-
-            var farbenVerloren = false;
-
-            foreach (var eintrag in liste.EnumerateArray())
-            {
-                var regel = AlsRegel(eintrag, hinweise, ref farbenVerloren);
-                if (regel is not null)
-                    regeln.Add(regel);
-            }
-
-            if (farbenVerloren)
-                hinweise.Add("Colours were not carried over - set them again under Colours.");
-        }
-        catch (Exception e)
-        {
-            hinweise.Add($"PatMeHonorific.json could not be read: {e.GetType().Name}");
-        }
-
-        return regeln;
-    }
-
-    private static Rule? AlsRegel(JsonElement e, List<string> hinweise, ref bool farbenVerloren)
-    {
-        var name = Text(e, "Name") ?? "Imported rule";
-        var vorlage = Text(e, "TitleTemplate") ?? string.Empty;
-
-        var emoteIds = new List<uint>();
-        if (e.TryGetProperty("EmoteIds", out var ids) && ids.ValueKind == JsonValueKind.Array)
-            emoteIds.AddRange(ids.EnumerateArray().Select(i => i.GetUInt32()));
-
-        if (emoteIds.Count == 0)
-        {
-            hinweise.Add($"\"{name}\" has no emotes and was skipped.");
-            return null;
-        }
-
-        if (Farbe(e, "Color") || Farbe(e, "Glow"))
-            farbenVerloren = true;
-
-        var (uebersetzt, sonderfall) = UebersetzeVorlage(vorlage);
-        if (sonderfall)
-            hinweise.Add($"\"{name}\" used a session or combo count - it now shows the total.");
-
-        var regel = new Rule
-        {
-            Name = name,
-            Enabled = Wahrheit(e, "Enabled") ?? true,
-            Channels = [ChatChannel.StandardEmote, ChatChannel.CustomEmote],
-            EmoteIds = emoteIds,
-            Direction = Richtung(e),
-            IsPrefix = Wahrheit(e, "IsPrefix") ?? true,
-
-            // PatMeHonorific kennt keine Namen in Vorlagen - es gibt dort nur
-            // Gesamtzahlen. Also die namenlose Vorlage, und das bewusst.
-            ShowName = false,
-            GeneralTemplate = uebersetzt,
-            PersonalTemplate = uebersetzt,
-        };
-
-        regel.EnsureId();
-        return regel;
-    }
-
-    /// <summary>
-    /// Scriban-Platzhalter in unsere übersetzen. PatMeHonorific kennt drei:
-    /// `total_count`, `session_count` und `combo_count` - wir nur die Gesamtzahl.
-    /// </summary>
-    private static (string Vorlage, bool Sonderfall) UebersetzeVorlage(string vorlage)
-    {
-        var sonderfall = false;
-
-        var neu = ScribanPlatzhalter().Replace(vorlage, treffer =>
-        {
-            var feld = treffer.Groups[1].Value;
-
-            if (!feld.Equals("total_count", StringComparison.OrdinalIgnoreCase))
-                sonderfall = true;
-
-            return "[Count]";
-        });
-
-        return (neu.Trim(), sonderfall);
-    }
-
-    /// <summary>
-    /// PatMeHonorific zählt seine Richtungen in derselben Reihenfolge wie wir:
-    /// 0 empfangen, 1 gegeben, alles andere beides. Bei den Voreinstellungen dort
-    /// steht 0, und die heißen „Receiving ...".
-    /// </summary>
-    private static CountDirection Richtung(JsonElement e)
-    {
-        if (!e.TryGetProperty("Direction", out var d) || !d.TryGetInt32(out var wert))
-            return CountDirection.Received;
-
-        return wert switch
-        {
-            0 => CountDirection.Received,
-            1 => CountDirection.Given,
-            _ => CountDirection.Both,
-        };
+        return eingetragen;
     }
 
     // ----------------------------------------------------------------- PatMe
 
-    /// <summary>
-    /// Liest die Stände **getrennt je Charakter**. PatMe führt sie so, und die Wahl,
-    /// welche davon übernommen werden, gehört dem Nutzer - zusammengerechnet wären
-    /// sie nicht mehr auseinanderzuhalten.
-    /// </summary>
-    private static List<Charakter> LiesCharaktere(string pfad, List<string> hinweise)
+    private static List<Charakter> LiesPatMe(string pfad, List<Stand> staende, List<string> hinweise)
     {
         var charaktere = new List<Charakter>();
 
@@ -314,32 +168,32 @@ public static partial class PatMeImport
 
             foreach (var besitzer in liste.EnumerateArray())
             {
-                var zaehler = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                var cid = Zahl(besitzer, "CID");
+                charaktere.Add(new Charakter(cid, Text(besitzer, "Name") ?? "?"));
 
-                if (besitzer.TryGetProperty("Counters", out var liste2))
+                if (!besitzer.TryGetProperty("Counters", out var eintraege))
+                    continue;
+
+                foreach (var z in eintraege.EnumerateArray())
                 {
-                    foreach (var z in liste2.EnumerateArray())
+                    var name = Text(z, "Name");
+                    if (string.IsNullOrEmpty(name)) continue;
+                    if (!z.TryGetProperty("Value", out var v) || !v.TryGetInt32(out var wert)) continue;
+                    if (wert <= 0) continue;
+
+                    if (!PatMeEmotes.TryGetValue(name, out var emoteId))
                     {
-                        var name = Text(z, "Name");
-                        if (string.IsNullOrEmpty(name)) continue;
-                        if (!z.TryGetProperty("Value", out var v) || !v.TryGetInt32(out var wert)) continue;
-
-                        zaehler[name] = zaehler.GetValueOrDefault(name) + wert;
-
-                        if (wert > 0 && !PatMeEmotes.ContainsKey(name))
-                            unbekannt.Add(name);
+                        unbekannt.Add(name);
+                        continue;
                     }
+
+                    // PatMe kennt keine Richtung - es zaehlt nur Empfangenes.
+                    staende.Add(new Stand(emoteId, false, cid, wert, "PatMe"));
                 }
-
-                var cid = besitzer.TryGetProperty("CID", out var c) && c.TryGetUInt64(out var wertCid)
-                    ? wertCid
-                    : 0ul;
-
-                charaktere.Add(new Charakter(cid, Text(besitzer, "Name") ?? "?", zaehler));
             }
 
             foreach (var k in unbekannt)
-                hinweise.Add($"PatMe counter \"{k}\" is unknown here and was skipped.");
+                hinweise.Add($"PatMe counter \"{k}\" has no known emote here and was skipped.");
         }
         catch (Exception e)
         {
@@ -349,21 +203,48 @@ public static partial class PatMeImport
         return charaktere;
     }
 
-    private static Rule EmoteRegel(string emote, uint[] ids)
-    {
-        var regel = new Rule
-        {
-            Name = emote,
-            Enabled = true,
-            Channels = [ChatChannel.StandardEmote, ChatChannel.CustomEmote],
-            EmoteIds = [.. ids],
-            ShowName = false,
-            GeneralTemplate = $"{emote.ToLowerInvariant()}ted [Count]x",
-            PersonalTemplate = $"[Name] {emote.ToLowerInvariant()}ted me [Count]x",
-        };
+    // -------------------------------------------------------- PatMeHonorific
 
-        regel.EnsureId();
-        return regel;
+    /// <summary>
+    /// Liest `Counters`. Der Schlüssel trägt Emote-Nummer, Richtung und Charakter -
+    /// alles, was gebraucht wird, ohne Namen raten zu müssen.
+    ///
+    /// Die Liste bleibt leer, solange das Plugin deaktiviert ist; es zählt erst, wenn
+    /// es läuft.
+    /// </summary>
+    private static void LiesHonorific(string pfad, List<Stand> staende, List<string> hinweise)
+    {
+        if (!File.Exists(pfad))
+            return;
+
+        try
+        {
+            using var datei = JsonDocument.Parse(File.ReadAllText(pfad));
+
+            if (!datei.RootElement.TryGetProperty("Counters", out var liste))
+                return;
+
+            foreach (var eintrag in liste.EnumerateArray())
+            {
+                if (!eintrag.TryGetProperty("Key", out var schluessel)) continue;
+                if (!eintrag.TryGetProperty("Value", out var v) || !v.TryGetInt32(out var wert)) continue;
+                if (wert <= 0) continue;
+
+                var emoteId = (uint)Zahl(schluessel, "EmoteId");
+                if (emoteId == 0) continue;
+
+                // Richtung wie bei uns: 0 empfangen, alles andere gegeben. Die
+                // Voreinstellungen dort heissen "Receiving ..." und stehen auf 0.
+                var gegeben = Zahl(schluessel, "Direction") != 0;
+
+                staende.Add(new Stand(emoteId, gegeben, Zahl(schluessel, "CharacterId"),
+                                      wert, "PatMe Honorific"));
+            }
+        }
+        catch (Exception e)
+        {
+            hinweise.Add($"PatMeHonorific.json could not be read: {e.GetType().Name}");
+        }
     }
 
     // ------------------------------------------------------------- Werkzeug
@@ -371,11 +252,6 @@ public static partial class PatMeImport
     private static string? Text(JsonElement e, string feld) =>
         e.TryGetProperty(feld, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 
-    private static bool? Wahrheit(JsonElement e, string feld) =>
-        e.TryGetProperty(feld, out var v) && v.ValueKind is JsonValueKind.True or JsonValueKind.False
-            ? v.GetBoolean()
-            : null;
-
-    private static bool Farbe(JsonElement e, string feld) =>
-        e.TryGetProperty(feld, out var v) && v.ValueKind is not JsonValueKind.Null;
+    private static ulong Zahl(JsonElement e, string feld) =>
+        e.TryGetProperty(feld, out var v) && v.TryGetUInt64(out var wert) ? wert : 0ul;
 }
