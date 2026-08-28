@@ -11,6 +11,11 @@ namespace EnCounter;
 /// Zweispaltig: links die Regeln, rechts der Editor der ausgewählten. Beides
 /// gleichzeitig sichtbar, damit man beim Vergleichen nicht springen muss.
 ///
+/// **Leitgedanke der Aufteilung:** Eine Regel hört entweder auf Emotes oder auf Chat.
+/// Das stand früher nur implizit in den Kanalhäkchen, und die Oberfläche wechselte
+/// unerklärlich ihr Aussehen. Jetzt ist es die erste, bewusste Entscheidung; alles
+/// Weitere richtet sich danach.
+///
 /// Die Bindings heißen `Dalamud.Bindings.ImGui`, nicht ImGuiNET - Beispiele aus dem
 /// Netz passen meist nicht.
 /// </summary>
@@ -21,21 +26,51 @@ public sealed class ConfigWindow(
     Action save)
 {
     private const uint Warnfarbe = 0xFF3333FFu;
+
     /// <summary>Gelb: geht noch, aber nicht fuer jeden Namen.</summary>
     private const uint Hinweisfarbe = 0xFF66CCFFu;
     private const uint Graufarbe = 0xFF999999u;
 
     /// <summary>
-    /// Kanäle in Gruppen, wie man sie im Kopf hat - statt siebzehn Häkchen in einer
-    /// Reihe.
+    /// Die Kanäle einzeln, in drei Spalten nach Zusammengehörigkeit. Gruppenhäkchen
+    /// gab es vorher - sie standen auf „aus", sobald ein Kanal der Gruppe fehlte, und
+    /// verschwiegen damit genau das, was sie zeigen sollten.
     /// </summary>
-    private static readonly (string Name, ChatChannel[] Kanaele)[] Gruppen =
+    private static readonly (string Beschriftung, ChatChannel Kanal)[][] Kanalspalten =
     [
-        ("Public",  [ChatChannel.Say, ChatChannel.Yell, ChatChannel.Shout]),
-        ("Private", [ChatChannel.TellIncoming, ChatChannel.Party, ChatChannel.CrossParty, ChatChannel.FreeCompany]),
-        ("Linkshells", [ChatChannel.Ls1, ChatChannel.Ls2, ChatChannel.Ls3, ChatChannel.Ls4,
-                        ChatChannel.Ls5, ChatChannel.Ls6, ChatChannel.Ls7, ChatChannel.Ls8]),
-        ("Emotes",  [ChatChannel.StandardEmote, ChatChannel.CustomEmote]),
+        [
+            ("Say", ChatChannel.Say),
+            ("Yell", ChatChannel.Yell),
+            ("Shout", ChatChannel.Shout),
+            ("Tell", ChatChannel.TellIncoming),
+        ],
+        [
+            ("Party", ChatChannel.Party),
+            ("Alliance", ChatChannel.Alliance),
+            ("Cross-world party", ChatChannel.CrossParty),
+            ("PvP team", ChatChannel.PvpTeam),
+        ],
+        [
+            ("Free Company", ChatChannel.FreeCompany),
+            ("Novice Network", ChatChannel.NoviceNetwork),
+        ],
+    ];
+
+    private static readonly ChatChannel[] Linkshells =
+    [
+        ChatChannel.Ls1, ChatChannel.Ls2, ChatChannel.Ls3, ChatChannel.Ls4,
+        ChatChannel.Ls5, ChatChannel.Ls6, ChatChannel.Ls7, ChatChannel.Ls8,
+    ];
+
+    private static readonly ChatChannel[] WeltLinkshells =
+    [
+        ChatChannel.Cwls1, ChatChannel.Cwls2, ChatChannel.Cwls3, ChatChannel.Cwls4,
+        ChatChannel.Cwls5, ChatChannel.Cwls6, ChatChannel.Cwls7, ChatChannel.Cwls8,
+    ];
+
+    private static readonly ChatChannel[] Emotekanaele =
+    [
+        ChatChannel.StandardEmote, ChatChannel.CustomEmote,
     ];
 
     public bool Visible;
@@ -49,7 +84,7 @@ public sealed class ConfigWindow(
         if (!Visible)
             return;
 
-        ImGui.SetNextWindowSize(new(760, 560), ImGuiCond.FirstUseEver);
+        ImGui.SetNextWindowSize(new(800, 580), ImGuiCond.FirstUseEver);
 
         if (!ImGui.Begin("EnCounter", ref Visible))
         {
@@ -63,8 +98,8 @@ public sealed class ConfigWindow(
 
         ImGui.BeginChild("editor", new(0, 0));
 
-        if (ausgewaehlt >= 0 && ausgewaehlt < config.Rules.Count)
-            DrawEditor(config.Rules[ausgewaehlt]);
+        if (Gewaehlt is { } regel)
+            DrawEditor(regel);
         else
             ImGui.TextColored(Graufarbe, "No rule selected.");
 
@@ -73,11 +108,14 @@ public sealed class ConfigWindow(
         ImGui.End();
     }
 
+    private Rule? Gewaehlt =>
+        ausgewaehlt >= 0 && ausgewaehlt < config.Rules.Count ? config.Rules[ausgewaehlt] : null;
+
     // ------------------------------------------------------------------ links
 
     private void DrawLinkeSpalte()
     {
-        ImGui.BeginChild("rules", new(210, 0), true);
+        ImGui.BeginChild("rules", new(215, 0), true);
 
         ImGui.TextUnformatted("Rules");
         ImGui.Separator();
@@ -95,28 +133,43 @@ public sealed class ConfigWindow(
 
             ImGui.SameLine();
 
-            var beschriftung = $"{regel.Name}##sel{i}";
-            if (ImGui.Selectable(beschriftung, ausgewaehlt == i))
+            if (ImGui.Selectable($"{regel.Name}##sel{i}", ausgewaehlt == i))
                 ausgewaehlt = i;
 
-            // Der Zaehler steht klein darunter statt in Klammern dahinter - so bleibt
-            // der Name lesbar, auch wenn er lang ist.
-            ImGui.TextColored(Graufarbe, $"      {counters.GetTotal(regel.Name)} counted");
+            // Zaehler und Art stehen klein darunter statt in Klammern dahinter - so
+            // bleibt der Name lesbar, auch wenn er lang ist.
+            var art = IstEmoteRegel(regel) ? "emotes" : "chat";
+            ImGui.TextColored(Graufarbe, $"      {counters.GetTotal(regel.Id)} counted · {art}");
         }
 
         ImGui.Separator();
 
-        if (ImGui.Button("Add", new(90, 0)))
+        if (ImGui.Button("Add", new(95, 0)))
         {
-            config.Rules.Add(new Rule { Name = $"Rule {config.Rules.Count + 1}" });
+            var neu = new Rule { Name = $"Rule {config.Rules.Count + 1}" };
+            neu.EnsureId();
+            config.Rules.Add(neu);
             ausgewaehlt = config.Rules.Count - 1;
             save();
         }
 
         ImGui.SameLine();
 
-        if (ImGui.Button("Delete", new(90, 0)) && ausgewaehlt >= 0 && ausgewaehlt < config.Rules.Count)
+        if (ImGui.Button("Duplicate", new(95, 0)) && Gewaehlt is { } vorlage)
         {
+            config.Rules.Insert(ausgewaehlt + 1, Kopiere(vorlage));
+            ausgewaehlt++;
+            save();
+        }
+
+        // SetItemTooltip gibt es in diesen Bindings nicht - nur IsItemHovered.
+        if (ImGui.IsItemHovered())
+            ImGui.SetTooltip("Same settings, own counter, starting at zero.");
+
+        if (ImGui.Button("Delete", new(196, 0)) && Gewaehlt is { } zuLoeschen)
+        {
+            // Der Zaehler haengt an der Id und waere sonst ein Waisenkind in der Datei.
+            counters.Reset(zuLoeschen.Id);
             config.Rules.RemoveAt(ausgewaehlt);
             ausgewaehlt = Math.Min(ausgewaehlt, config.Rules.Count - 1);
             save();
@@ -125,79 +178,252 @@ public sealed class ConfigWindow(
         ImGui.EndChild();
     }
 
+    /// <summary>
+    /// Tiefe Kopie mit eigener Id. Die Listen müssen neu angelegt werden - sonst
+    /// teilen sich Original und Kopie dieselben Kanäle, und ein Häkchen wirkt in
+    /// beiden.
+    /// </summary>
+    private static Rule Kopiere(Rule v)
+    {
+        var kopie = new Rule
+        {
+            Name = $"{v.Name} (copy)",
+            Enabled = v.Enabled,
+            Channels = [.. v.Channels],
+            TriggerTexts = [.. v.TriggerTexts],
+            EmoteIds = [.. v.EmoteIds],
+            RequiresOwnName = v.RequiresOwnName,
+            Direction = v.Direction,
+            CooldownSeconds = v.CooldownSeconds,
+            ShowName = v.ShowName,
+            PersonalTemplate = v.PersonalTemplate,
+            GeneralTemplate = v.GeneralTemplate,
+            DisplaySeconds = v.DisplaySeconds,
+            UseColours = v.UseColours,
+            ColourR = v.ColourR, ColourG = v.ColourG, ColourB = v.ColourB,
+            GlowR = v.GlowR, GlowG = v.GlowG, GlowB = v.GlowB,
+            UseGradient = v.UseGradient,
+            Colour3R = v.Colour3R, Colour3G = v.Colour3G, Colour3B = v.Colour3B,
+            GradientStyle = v.GradientStyle,
+        };
+
+        kopie.EnsureId();
+        return kopie;
+    }
+
     // ----------------------------------------------------------------- rechts
 
     private void DrawEditor(Rule regel)
     {
         var name = regel.Name;
+        ImGui.SetNextItemWidth(300);
         if (ImGui.InputText("Name", ref name, 64))
         {
             regel.Name = name;
             save();
         }
 
-        if (ImGui.BeginTabBar("tabs"))
+        ImGui.Spacing();
+
+        if (!ImGui.BeginTabBar("tabs"))
+            return;
+
+        if (ImGui.BeginTabItem("Listen to"))
         {
-            if (ImGui.BeginTabItem("Listen to"))
-            {
-                DrawAusloeser(regel);
-                ImGui.EndTabItem();
-            }
-
-            if (ImGui.BeginTabItem("Text"))
-            {
-                DrawVorlagen(regel);
-                ImGui.EndTabItem();
-            }
-
-            if (ImGui.BeginTabItem("Colours"))
-            {
-                DrawFarben(regel);
-                ImGui.EndTabItem();
-            }
-
-            ImGui.EndTabBar();
+            DrawAusloeser(regel);
+            ImGui.EndTabItem();
         }
+
+        if (ImGui.BeginTabItem("Text"))
+        {
+            DrawVorlagen(regel);
+            ImGui.EndTabItem();
+        }
+
+        if (ImGui.BeginTabItem("Colours"))
+        {
+            DrawFarben(regel);
+            ImGui.EndTabItem();
+        }
+
+        if (ImGui.BeginTabItem("Counts"))
+        {
+            DrawZaehler(regel);
+            ImGui.EndTabItem();
+        }
+
+        ImGui.EndTabBar();
     }
+
+    private static bool IstEmoteRegel(Rule regel) =>
+        regel.Channels.Contains(ChatChannel.StandardEmote) ||
+        regel.Channels.Contains(ChatChannel.CustomEmote);
+
+    // ------------------------------------------------------------- Listen to
 
     private void DrawAusloeser(Rule regel)
     {
-        ImGui.TextUnformatted("Channels");
-        ImGui.TextColored(Graufarbe, "Where to listen.");
+        ImGui.Spacing();
 
-        foreach (var (gruppe, kanaele) in Gruppen)
+        var istEmote = IstEmoteRegel(regel);
+        DrawArtwahl(regel, istEmote);
+
+        ImGui.Separator();
+
+        if (istEmote)
         {
-            var alle = kanaele.All(k => regel.Channels.Contains(k));
-            var teils = !alle && kanaele.Any(k => regel.Channels.Contains(k));
+            DrawRichtung(regel);
+            ImGui.Spacing();
+            DrawEmoteAuswahl(regel);
+        }
+        else
+        {
+            DrawKanaele(regel);
+            ImGui.Spacing();
+            DrawTrigger(regel);
+        }
 
-            var an = alle;
-            if (ImGui.Checkbox(gruppe, ref an))
+        ImGui.Separator();
+        DrawBremse(regel);
+    }
+
+    /// <summary>
+    /// Emote- oder Chatregel. Die Wahl setzt die Kanäle passend - sie ist keine
+    /// zusätzliche Angabe, sondern eine lesbare Sicht auf dieselbe Auswahl.
+    /// </summary>
+    private void DrawArtwahl(Rule regel, bool istEmote)
+    {
+        ImGui.SetNextItemWidth(220);
+
+        if (ImGui.BeginCombo("Listens to", istEmote ? "Emotes" : "Chat messages"))
+        {
+            if (ImGui.Selectable("Chat messages", !istEmote) && istEmote)
             {
-                foreach (var k in kanaele)
-                {
+                foreach (var k in Emotekanaele)
                     regel.Channels.Remove(k);
-                    if (an) regel.Channels.Add(k);
-                }
+
+                // Ohne einen Kanal hoert die Regel auf gar nichts. Say ist der
+                // naheliegende Anfang.
+                if (regel.Channels.Count == 0)
+                    regel.Channels.Add(ChatChannel.Say);
 
                 save();
             }
 
-            if (teils)
+            if (ImGui.Selectable("Emotes", istEmote) && !istEmote)
             {
-                ImGui.SameLine();
-                ImGui.TextColored(Graufarbe, "(partly)");
+                regel.Channels.Clear();
+                regel.Channels.AddRange(Emotekanaele);
+                save();
             }
+
+            ImGui.EndCombo();
         }
 
-        ImGui.Separator();
+        ImGui.TextColored(Graufarbe, istEmote
+            ? "Counts emotes like /hug or /pet, taken straight from the game."
+            : "Counts chat messages containing one of your trigger words.");
 
-        var hoertAufEmotes = regel.Channels.Contains(ChatChannel.StandardEmote)
-                          || regel.Channels.Contains(ChatChannel.CustomEmote);
+        // Mischregeln aus aelteren Fassungen: Die Chatkanaele waeren hier unsichtbar,
+        // wuerden aber weiter zaehlen.
+        if (!istEmote)
+            return;
 
-        if (hoertAufEmotes)
-            DrawEmoteAuswahl(regel);
+        var uebrig = regel.Channels.Count(k => !Emotekanaele.Contains(k));
+        if (uebrig == 0)
+            return;
+
+        ImGui.TextColored(Warnfarbe, $"This rule also still listens to {uebrig} chat channel(s).");
+
+        if (!ImGui.Button("Remove them"))
+            return;
+
+        regel.Channels.RemoveAll(k => !Emotekanaele.Contains(k));
+        save();
+    }
+
+    /// <summary>
+    /// Die Kanäle einzeln, in Spalten. Eine einzelne lange Liste zwingt zum Scrollen
+    /// und lässt Zusammengehöriges auseinanderfallen.
+    /// </summary>
+    private void DrawKanaele(Rule regel)
+    {
+        ImGui.TextUnformatted("Channels");
+
+        if (ImGui.BeginTable("kanaele", Kanalspalten.Length))
+        {
+            for (var i = 0; i < Kanalspalten.Length; i++)
+                ImGui.TableSetupColumn($"##sp{i}");
+
+            // Zeilenweise fuellen: In jeder Zeile ein Eintrag je Spalte, damit die
+            // Spalten nebeneinander stehen statt untereinander.
+            var zeilen = Kanalspalten.Max(s => s.Length);
+
+            for (var zeile = 0; zeile < zeilen; zeile++)
+            {
+                ImGui.TableNextRow();
+
+                foreach (var spalte in Kanalspalten)
+                {
+                    ImGui.TableNextColumn();
+
+                    if (zeile >= spalte.Length)
+                        continue;
+
+                    var (beschriftung, kanal) = spalte[zeile];
+                    Kanalhaken(regel, beschriftung, kanal);
+                }
+            }
+
+            ImGui.EndTable();
+        }
+
+        ImGui.Spacing();
+
+        DrawLinkshellGruppe(regel, "Linkshells", Linkshells, "ls");
+        DrawLinkshellGruppe(regel, "Cross-world linkshells", WeltLinkshells, "cwls");
+    }
+
+    /// <summary>
+    /// Sechzehn Linkshells würden die Seite erschlagen. Zugeklappt steht nur, wie
+    /// viele davon an sind - die Angabe, auf die es beim Überfliegen ankommt.
+    /// </summary>
+    private void DrawLinkshellGruppe(Rule regel, string titel, ChatChannel[] kanaele, string kuerzel)
+    {
+        var aktiv = kanaele.Count(regel.Channels.Contains);
+        var beschriftung = aktiv > 0 ? $"{titel}  ({aktiv} on)###{kuerzel}" : $"{titel}###{kuerzel}";
+
+        if (!ImGui.CollapsingHeader(beschriftung))
+            return;
+
+        if (!ImGui.BeginTable($"tbl{kuerzel}", 4))
+            return;
+
+        for (var i = 0; i < kanaele.Length; i++)
+        {
+            if (i % 4 == 0)
+                ImGui.TableNextRow();
+
+            ImGui.TableNextColumn();
+            Kanalhaken(regel, $"{i + 1}##{kuerzel}{i}", kanaele[i]);
+        }
+
+        ImGui.EndTable();
+    }
+
+    private void Kanalhaken(Rule regel, string beschriftung, ChatChannel kanal)
+    {
+        var an = regel.Channels.Contains(kanal);
+
+        if (!ImGui.Checkbox(beschriftung, ref an))
+            return;
+
+        if (an)
+            regel.Channels.Add(kanal);
         else
-            DrawTrigger(regel);
+            regel.Channels.Remove(kanal);
+
+        save();
     }
 
     private void DrawTrigger(Rule regel)
@@ -219,7 +445,7 @@ public sealed class ConfigWindow(
         }
 
         ImGui.SetNextItemWidth(220);
-        ImGui.InputText("##newtrigger", ref neuerTrigger, 128);
+        ImGui.InputTextWithHint("##newtrigger", "add a word or phrase...", ref neuerTrigger, 128);
         ImGui.SameLine();
 
         if (ImGui.Button("Add##trigger") && !string.IsNullOrWhiteSpace(neuerTrigger))
@@ -229,7 +455,7 @@ public sealed class ConfigWindow(
             save();
         }
 
-        ImGui.Separator();
+        ImGui.Spacing();
 
         var eigenerName = regel.RequiresOwnName;
         if (ImGui.Checkbox("Message must contain my name", ref eigenerName))
@@ -242,13 +468,64 @@ public sealed class ConfigWindow(
     }
 
     /// <summary>
+    /// Empfangen, gegeben oder beides. Steht nur bei Emotes, weil es im Chat keinen
+    /// verlässlichen Empfänger gibt - wer in Say etwas sagt, sagt es an alle.
+    /// </summary>
+    private void DrawRichtung(Rule regel)
+    {
+        ImGui.SetNextItemWidth(220);
+
+        if (ImGui.BeginCombo("Direction", Richtungsname(regel.Direction)))
+        {
+            foreach (var richtung in new[] { CountDirection.Received, CountDirection.Given, CountDirection.Both })
+            {
+                if (!ImGui.Selectable(Richtungsname(richtung), regel.Direction == richtung))
+                    continue;
+
+                regel.Direction = richtung;
+                save();
+            }
+
+            ImGui.EndCombo();
+        }
+
+        ImGui.TextColored(Graufarbe, "The counter is always kept per other person, never for yourself.");
+    }
+
+    private static string Richtungsname(CountDirection richtung) => richtung switch
+    {
+        CountDirection.Received => "They emote me",
+        CountDirection.Given => "I emote them",
+        _ => "Both directions",
+    };
+
+    private void DrawBremse(Rule regel)
+    {
+        var sekunden = regel.CooldownSeconds;
+        ImGui.SetNextItemWidth(220);
+
+        if (ImGui.SliderInt("Cooldown per person", ref sekunden, 0, 60, sekunden == 0 ? "off" : "%d s"))
+        {
+            regel.CooldownSeconds = sekunden;
+            save();
+        }
+
+        ImGui.TextColored(Graufarbe, sekunden == 0
+            ? "Every single event counts - a macro can run the number up."
+            : $"The same person counts again after {sekunden}s at the earliest.");
+    }
+
+    /// <summary>
     /// Emotes über ihren Namen auswählen. Gespeichert wird die Nummer, weil die
     /// sprachunabhängig ist - angezeigt der Name in der Client-Sprache.
     /// </summary>
     private void DrawEmoteAuswahl(Rule regel)
     {
         ImGui.TextUnformatted("Emotes");
-        ImGui.TextColored(Graufarbe, "Empty: every emote aimed at you counts.");
+
+        ImGui.TextColored(Graufarbe, regel.Direction == CountDirection.Given
+            ? "Empty: every emote you aim at someone counts."
+            : "Empty: every emote aimed at you counts.");
 
         foreach (var id in regel.EmoteIds.ToList())
         {
@@ -263,7 +540,6 @@ public sealed class ConfigWindow(
             ImGui.TextUnformatted(EmoteCatalog.NameOf(data, id));
         }
 
-        ImGui.Separator();
         ImGui.SetNextItemWidth(220);
         ImGui.InputTextWithHint("##emotesuche", "search emote...", ref emoteSuche, 64);
 
@@ -303,32 +579,43 @@ public sealed class ConfigWindow(
         ImGui.EndChild();
     }
 
+    // ------------------------------------------------------------------ Text
+
     private void DrawVorlagen(Rule regel)
     {
-        ImGui.TextColored(Graufarbe, "[Name] and [Anzahl] are filled in.");
         ImGui.Spacing();
+        ImGui.SetNextItemWidth(280);
 
         // Der Unterschied ist nicht nur der Name: Mit Namen zeigt die Meldung den
         // Zaehler dieser Person, ohne Namen die Summe ueber alle.
-        var mitNamen = regel.ShowName;
-
-        if (ImGui.RadioButton("Name the person", ref mitNamen, true))
+        if (ImGui.BeginCombo("Shows", regel.ShowName ? "One person's count" : "The total across everyone"))
         {
-            regel.ShowName = true;
-            save();
-        }
+            if (ImGui.Selectable("One person's count", regel.ShowName) && !regel.ShowName)
+            {
+                regel.ShowName = true;
+                save();
+            }
 
-        ImGui.SameLine();
+            if (ImGui.Selectable("The total across everyone", !regel.ShowName) && regel.ShowName)
+            {
+                regel.ShowName = false;
+                save();
+            }
 
-        if (ImGui.RadioButton("Show the total", ref mitNamen, false))
-        {
-            regel.ShowName = false;
-            save();
+            ImGui.EndCombo();
         }
 
         ImGui.TextColored(Graufarbe, regel.ShowName
-            ? "Shows how often THIS person did it."
-            : "Shows how often ANYONE did it.");
+            ? "How often THIS person did it."
+            : "How often ANYONE did it.");
+
+        ImGui.Separator();
+        ImGui.TextColored(Graufarbe, "[Name] and [Count] are filled in.");
+
+        // Bei ausgehenden Emotes ist [Name] nicht der Urheber, sondern das Ziel - eine
+        // Vorlage wie "[Name] hugged me" stuende dann genau verkehrt herum.
+        if (regel.Direction == CountDirection.Given && IstEmoteRegel(regel))
+            ImGui.TextColored(Hinweisfarbe, "[Name] is the person you emoted, not the sender.");
 
         ImGui.Spacing();
 
@@ -347,7 +634,7 @@ public sealed class ConfigWindow(
         ImGui.Separator();
 
         var sekunden = regel.DisplaySeconds;
-        ImGui.SetNextItemWidth(240);
+        ImGui.SetNextItemWidth(220);
         if (ImGui.SliderInt("Seconds shown", ref sekunden, 1, 60))
         {
             regel.DisplaySeconds = sekunden;
@@ -411,8 +698,12 @@ public sealed class ConfigWindow(
         }
     }
 
+    // --------------------------------------------------------------- Colours
+
     private void DrawFarben(Rule regel)
     {
+        ImGui.Spacing();
+
         var eigene = regel.UseColours;
         if (ImGui.Checkbox("Use own colours", ref eigene))
         {
@@ -428,6 +719,7 @@ public sealed class ConfigWindow(
         ImGui.Separator();
 
         var farbe = new Vector3(regel.ColourR, regel.ColourG, regel.ColourB);
+        ImGui.SetNextItemWidth(220);
         if (ImGui.ColorEdit3("Text", ref farbe))
         {
             (regel.ColourR, regel.ColourG, regel.ColourB) = (farbe.X, farbe.Y, farbe.Z);
@@ -435,6 +727,7 @@ public sealed class ConfigWindow(
         }
 
         var glow = new Vector3(regel.GlowR, regel.GlowG, regel.GlowB);
+        ImGui.SetNextItemWidth(220);
         if (ImGui.ColorEdit3("Glow", ref glow))
         {
             (regel.GlowR, regel.GlowG, regel.GlowB) = (glow.X, glow.Y, glow.Z);
@@ -454,17 +747,98 @@ public sealed class ConfigWindow(
             return;
 
         var farbe3 = new Vector3(regel.Colour3R, regel.Colour3G, regel.Colour3B);
+        ImGui.SetNextItemWidth(220);
         if (ImGui.ColorEdit3("Second colour", ref farbe3))
         {
             (regel.Colour3R, regel.Colour3G, regel.Colour3B) = (farbe3.X, farbe3.Y, farbe3.Z);
             save();
         }
 
-        var stil = regel.GradientStyle;
-        if (ImGui.RadioButton("Pulse", ref stil, 0)) { regel.GradientStyle = stil; save(); }
-        ImGui.SameLine();
-        if (ImGui.RadioButton("Wave", ref stil, 1)) { regel.GradientStyle = stil; save(); }
-        ImGui.SameLine();
-        if (ImGui.RadioButton("Static", ref stil, 2)) { regel.GradientStyle = stil; save(); }
+        ImGui.SetNextItemWidth(220);
+
+        if (!ImGui.BeginCombo("Style", Verlaufsname(regel.GradientStyle)))
+            return;
+
+        for (var stil = 0; stil <= 2; stil++)
+        {
+            if (!ImGui.Selectable(Verlaufsname(stil), regel.GradientStyle == stil))
+                continue;
+
+            regel.GradientStyle = stil;
+            save();
+        }
+
+        ImGui.EndCombo();
+    }
+
+    /// <summary>Die Reihenfolge stammt aus Honorific: 0 Pulse, 1 Wave, 2 Static.</summary>
+    private static string Verlaufsname(int stil) => stil switch
+    {
+        0 => "Pulse",
+        1 => "Wave",
+        _ => "Static",
+    };
+
+    // ---------------------------------------------------------------- Counts
+
+    /// <summary>
+    /// Wer wie oft. Nur zum Ansehen und Zurücksetzen - eine tippbare Zahl lädt dazu
+    /// ein, den Stand zu erfinden, und dann steht über dem Kopf eine Behauptung
+    /// statt einer Zählung.
+    /// </summary>
+    private void DrawZaehler(Rule regel)
+    {
+        ImGui.Spacing();
+
+        var eintraege = counters.GetAll(regel.Id);
+
+        ImGui.TextUnformatted($"{counters.GetTotal(regel.Id)} in total, {eintraege.Count} people");
+
+        if (eintraege.Count > 0)
+        {
+            ImGui.SameLine();
+
+            if (ImGui.Button("Reset all"))
+            {
+                counters.Reset(regel.Id);
+                save();
+                return;
+            }
+        }
+
+        ImGui.Separator();
+
+        if (eintraege.Count == 0)
+        {
+            ImGui.TextColored(Graufarbe, "Nothing counted yet.");
+            return;
+        }
+
+        ImGui.BeginChild("zaehlerliste", new(0, 0), true);
+
+        foreach (var (person, anzahl) in eintraege)
+        {
+            if (ImGui.Button($"x##del{person.Name}{person.WorldId}"))
+            {
+                counters.Remove(regel.Id, person);
+                save();
+                break;
+            }
+
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Reset this person to zero.");
+
+            ImGui.SameLine();
+            ImGui.TextUnformatted($"{anzahl,5}   {person.Name}");
+
+            var welt = WorldCatalog.NameOf(data, person.WorldId);
+            if (string.IsNullOrEmpty(welt))
+                continue;
+
+            ImGui.SameLine();
+            ImGui.TextColored(Graufarbe, $"@ {welt}");
+        }
+
+        ImGui.EndChild();
     }
 }

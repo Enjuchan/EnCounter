@@ -12,7 +12,13 @@ namespace EnCounter;
 [Serializable]
 public sealed class Configuration : IPluginConfiguration
 {
-    public int Version { get; set; } = 1;
+    /// <summary>
+    /// 1: Zähler hingen am Regelnamen, Platzhalter hieß `[Anzahl]`.
+    /// 2: Zähler hängen an <see cref="Rule.Id"/>, Platzhalter heißt `[Count]`.
+    /// </summary>
+    public const int CurrentVersion = 2;
+
+    public int Version { get; set; } = CurrentVersion;
 
     public List<Rule> Rules { get; set; } = [];
 
@@ -20,48 +26,142 @@ public sealed class Configuration : IPluginConfiguration
 
     public sealed class CounterEntry
     {
+        /// <summary>Der stabile Schlüssel. Leer bei Ständen aus Fassung 1.</summary>
+        public string RuleId { get; set; } = string.Empty;
+
+        /// <summary>Nur noch zum Wandern alter Stände da.</summary>
         public string RuleName { get; set; } = string.Empty;
+
         public string PlayerName { get; set; } = string.Empty;
         public uint WorldId { get; set; }
         public int Count { get; set; }
     }
 
     /// <summary>
-    /// Legt beim ersten Start zwei Regeln an, damit sofort etwas passiert.
+    /// Bringt eine geladene Konfiguration auf den heutigen Stand. Gibt zurück, ob sich
+    /// etwas geändert hat und gespeichert werden muss.
     ///
-    /// Solange es keine Oberfläche gibt, wäre das Plugin sonst stumm - es gäbe nichts,
-    /// worauf es hören könnte.
+    /// Läuft **vor** <see cref="ToStore"/>: Danach sind alle Zähler unter Ids
+    /// abgelegt, und nichts im laufenden Betrieb muss den alten Fall noch kennen.
+    /// </summary>
+    public bool Migrate()
+    {
+        var geaendert = false;
+
+        foreach (var regel in Rules)
+        {
+            if (regel.EnsureId())
+                geaendert = true;
+
+            var persoenlich = TitleTemplate.Modernise(regel.PersonalTemplate);
+            if (persoenlich != regel.PersonalTemplate)
+            {
+                regel.PersonalTemplate = persoenlich;
+                geaendert = true;
+            }
+
+            var allgemein = TitleTemplate.Modernise(regel.GeneralTemplate);
+            if (allgemein != regel.GeneralTemplate)
+            {
+                regel.GeneralTemplate = allgemein;
+                geaendert = true;
+            }
+        }
+
+        // Alte Stände hängen am Namen. Sie jetzt auf die Id umzuschreiben ist die
+        // einzige Gelegenheit, bei der die Zuordnung noch eindeutig ist - sobald
+        // jemand umbenennt, wäre sie verloren.
+        foreach (var eintrag in Counters)
+        {
+            if (!string.IsNullOrEmpty(eintrag.RuleId))
+                continue;
+
+            var regel = Rules.FirstOrDefault(r => r.Name == eintrag.RuleName);
+            if (regel is null)
+                continue;
+
+            eintrag.RuleId = regel.Id;
+            geaendert = true;
+        }
+
+        // Stände ohne passende Regel sind Reste gelöschter Regeln. Sie wären ab jetzt
+        // unerreichbar und würden die Datei nur aufblähen.
+        var bekannt = Rules.Select(r => r.Id).ToHashSet();
+        var entfernt = Counters.RemoveAll(e => !bekannt.Contains(e.RuleId));
+        if (entfernt > 0)
+            geaendert = true;
+
+        if (Version != CurrentVersion)
+        {
+            Version = CurrentVersion;
+            geaendert = true;
+        }
+
+        return geaendert;
+    }
+
+    /// <summary>
+    /// Legt beim ersten Start ein paar Regeln an, damit sofort etwas passiert.
+    ///
+    /// Getrennt nach Emote statt einer Sammelregel „Emotes": Nur so kann jede ihren
+    /// eigenen Text tragen - „hugged" statt „emoted" - und das ist der eigentliche
+    /// Reiz an der Sache.
     /// </summary>
     public bool EnsureDefaults()
     {
         if (Rules.Count > 0)
             return false;
 
-        Rules.Add(new Rule
-        {
-            Name = "Emotes",
-            Enabled = true,
-            Channels = [ChatChannel.StandardEmote, ChatChannel.CustomEmote],
-            TriggerTexts = [],
-            RequiresOwnName = false,
-            PersonalTemplate = "[Name] emoted [Anzahl]x",
-            GeneralTemplate = "emoted at [Anzahl]x",
-            DisplaySeconds = 10,
-        });
+        // Nummern aus der Emote-Tabelle des Spiels, nicht geraten: Der Emote mit der
+        // Nummer 105 heisst „Pet", sein Textbefehl ist /stroke.
+        Rules.Add(EmoteRegel("Hug", 112, "hugged", "hugged"));
+        Rules.Add(EmoteRegel("Dote", 146, "doted", "doted"));
+        Rules.Add(EmoteRegel("Pet", 105, "petted", "petted"));
 
-        Rules.Add(new Rule
+        Rules.Add(Neu(new Rule
         {
-            Name = "Liebe",
+            Name = "Love",
             Enabled = true,
-            Channels = [ChatChannel.Say, ChatChannel.TellIncoming, ChatChannel.Party],
-            TriggerTexts = ["liebe dich", "love you", "<3"],
-            RequiresOwnName = false,
-            PersonalTemplate = "[Name] loves you [Anzahl]x",
-            GeneralTemplate = "got love [Anzahl]x",
+
+            // Ueberall, wo Menschen miteinander reden. Alliance und Novice Network
+            // bleiben aussen vor - dort geht es um Inhalte, nicht um Zuneigung.
+            Channels =
+            [
+                ChatChannel.Say, ChatChannel.Yell, ChatChannel.Shout,
+                ChatChannel.TellIncoming, ChatChannel.Party, ChatChannel.CrossParty,
+                ChatChannel.FreeCompany,
+            ],
+            TriggerTexts = ["love you", "<3"],
+
+            // Sonst zaehlt jedes Gespraech in Hoerweite mit. Im Tell greift die
+            // Bedingung ohnehin nicht - dort ist die Nachricht an einen gerichtet.
+            RequiresOwnName = true,
+            PersonalTemplate = "[Name] loves me [Count]x",
+            GeneralTemplate = "got love [Count]x",
             DisplaySeconds = 10,
-        });
+        }));
 
         return true;
+    }
+
+    private static Rule EmoteRegel(string name, uint emoteId, string persoenlich, string allgemein) =>
+        Neu(new Rule
+        {
+            Name = name,
+            Enabled = true,
+            Channels = [ChatChannel.StandardEmote, ChatChannel.CustomEmote],
+            EmoteIds = [emoteId],
+            TriggerTexts = [],
+            RequiresOwnName = false,
+            PersonalTemplate = $"[Name] {persoenlich} me [Count]x",
+            GeneralTemplate = $"{allgemein} [Count]x",
+            DisplaySeconds = 10,
+        });
+
+    private static Rule Neu(Rule regel)
+    {
+        regel.EnsureId();
+        return regel;
     }
 
     public CounterStore ToStore()
@@ -70,8 +170,11 @@ public sealed class Configuration : IPluginConfiguration
 
         foreach (var e in Counters)
         {
-            if (!daten.TryGetValue(e.RuleName, out var proPerson))
-                daten[e.RuleName] = proPerson = [];
+            if (string.IsNullOrEmpty(e.RuleId))
+                continue;
+
+            if (!daten.TryGetValue(e.RuleId, out var proPerson))
+                daten[e.RuleId] = proPerson = [];
 
             proPerson[new CounterKey(e.PlayerName, e.WorldId)] = e.Count;
         }
@@ -83,10 +186,13 @@ public sealed class Configuration : IPluginConfiguration
 
     public void FromStore(CounterStore store)
     {
+        var namen = Rules.ToDictionary(r => r.Id, r => r.Name);
+
         Counters = [.. store.Entries.SelectMany(regel =>
             regel.Value.Select(person => new CounterEntry
             {
-                RuleName = regel.Key,
+                RuleId = regel.Key,
+                RuleName = namen.GetValueOrDefault(regel.Key, string.Empty),
                 PlayerName = person.Key.Name,
                 WorldId = person.Key.WorldId,
                 Count = person.Value,

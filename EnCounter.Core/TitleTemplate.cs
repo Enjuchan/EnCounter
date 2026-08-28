@@ -22,8 +22,17 @@ public static partial class TitleTemplate
     /// <summary>Was bei persönlichen Vorlagen an freiem Text bleibt: 32 - 15 - 4.</summary>
     public const int MaxPersonalFreeText = MaxTitleLength - MaxFirstName - MaxDigits;
 
-    [GeneratedRegex(@"\[Name\]|\[Anzahl\]")]
+    /// <summary>
+    /// `[Anzahl]` ist die alte, deutsche Schreibweise. Sie wird weiter erkannt, damit
+    /// von Hand geschriebene Vorlagen aus früheren Fassungen nicht still kaputtgehen -
+    /// gespeicherte werden beim Laden auf `[Count]` umgeschrieben.
+    /// </summary>
+    [GeneratedRegex(@"\[Name\]|\[Count\]|\[Anzahl\]")]
     private static partial Regex Placeholders();
+
+    /// <summary>Schreibt die alte Schreibweise auf die neue um.</summary>
+    public static string Modernise(string template) =>
+        (template ?? string.Empty).Replace("[Anzahl]", "[Count]");
 
     /// <summary>Kürzestmöglicher Vorname in FFXIV.</summary>
     public const int MinFirstName = 2;
@@ -50,6 +59,7 @@ public static partial class TitleTemplate
     public static string Render(string template, string? name, int count) =>
         (template ?? string.Empty)
             .Replace("[Name]", name ?? string.Empty)
+            .Replace("[Count]", count.ToString())
             .Replace("[Anzahl]", count.ToString());
 
     /// <summary>

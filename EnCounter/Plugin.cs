@@ -19,17 +19,35 @@ public sealed class Plugin : IDalamudPlugin
 
     private readonly Configuration config;
     private readonly CounterStore counters;
+    private readonly CooldownGate cooldowns = new();
     private readonly HonorificBridge honorific;
     private readonly ChatWatcher watcher;
     private readonly EmoteWatcher emotes;
     private readonly TitlePresenter presenter;
     private readonly ConfigWindow window;
 
+    /// <summary>
+    /// Es liegt etwas an, das noch nicht auf der Platte steht.
+    ///
+    /// Frueher wurde bei jedem einzelnen Treffer geschrieben - bei einem Makro, das im
+    /// Sekundentakt feuert, ebenso wie beim Ziehen eines Reglers in der Oberflaeche.
+    /// Gesammelt wird deshalb und im Puls geschrieben.
+    /// </summary>
+    private bool ungespeichert;
+    private DateTime naechstesSpeichern = DateTime.MinValue;
+    private static readonly TimeSpan Speicherabstand = TimeSpan.FromSeconds(2);
+
     public Plugin()
     {
         config = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
 
-        if (config.EnsureDefaults())
+        // Reihenfolge zaehlt: Erst Regeln anlegen, damit auch die frischen eine Id
+        // bekommen, dann wandern, dann laden. Nach Migrate liegen alle Zaehler unter
+        // Ids - der laufende Betrieb kennt den alten Fall gar nicht mehr.
+        var neuAngelegt = config.EnsureDefaults();
+        var gewandert = config.Migrate();
+
+        if (neuAngelegt || gewandert)
             PluginInterface.SavePluginConfig(config);
 
         counters = config.ToStore();
@@ -45,7 +63,7 @@ public sealed class Plugin : IDalamudPlugin
         emotes = new EmoteWatcher(Interop);
         emotes.OnEmote += HandleEmote;
 
-        window = new ConfigWindow(config, counters, Data, () => PluginInterface.SavePluginConfig(config));
+        window = new ConfigWindow(config, counters, Data, MerkeAenderung);
 
         PluginInterface.UiBuilder.Draw += window.Draw;
 
@@ -70,7 +88,7 @@ public sealed class Plugin : IDalamudPlugin
 
         if (!honorific.IsAvailable)
         {
-            Chat.PrintError($"[EnCounter] Honorific wird benoetigt: {honorific.LastError}");
+            Chat.PrintError($"[EnCounter] Honorific is required: {honorific.LastError}");
         }
         else
         {
@@ -96,21 +114,46 @@ public sealed class Plugin : IDalamudPlugin
                 continue;
 
             var schluessel = new CounterKey(e.SenderName, e.SenderWorldId);
-            var persoenlich = counters.Increment(regel.Name, schluessel);
-            var gesamt = counters.GetTotal(regel.Name);
+
+            // Gebremst heisst: nichts zaehlen, nichts anzeigen, und auch keine spaetere
+            // Regel einspringen lassen - sonst haette ein Makro am Ende doch Wirkung.
+            if (!cooldowns.Allow(regel.Id, schluessel, regel.CooldownSeconds, DateTime.UtcNow))
+                return;
+
+            var persoenlich = counters.Increment(regel.Id, schluessel);
+            var gesamt = counters.GetTotal(regel.Id);
 
             presenter.Show(
                 TitleTemplate.Build(regel, e.SenderName, persoenlich, gesamt),
                 regel);
 
-            config.FromStore(counters);
-            PluginInterface.SavePluginConfig(config);
+            MerkeAenderung();
             return;   // eine Meldung je Ereignis, die erste passende gewinnt
         }
     }
 
+    /// <summary>Es hat sich etwas geändert; geschrieben wird im nächsten Puls.</summary>
+    private void MerkeAenderung() => ungespeichert = true;
+
+    private void SpeichereJetzt()
+    {
+        config.FromStore(counters);
+        PluginInterface.SavePluginConfig(config);
+
+        ungespeichert = false;
+        naechstesSpeichern = DateTime.UtcNow + Speicherabstand;
+    }
+
     /// <summary>
-    /// Ein Emote wurde ausgeloest. Nur Emotes anderer, die auf uns zielen, zaehlen.
+    /// Ein Emote wurde ausgeloest.
+    ///
+    /// Der Hook sieht beide Richtungen: was andere auf uns richten und was wir auf
+    /// andere richten. Welche davon zaehlt, entscheidet die Regel. Gezaehlt wird in
+    /// beiden Faellen die **andere** Person - ein Zaehler auf den eigenen Namen waere
+    /// sinnlos.
+    ///
+    /// Ungerichtete Emotes bleiben aussen vor: Wer neben uns tanzt, meint niemanden,
+    /// und ohne Gegenueber gibt es keinen Schluessel zum Zaehlen.
     /// </summary>
     private void HandleEmote(uint urheber, uint ziel, uint emoteId)
     {
@@ -118,11 +161,20 @@ public sealed class Plugin : IDalamudPlugin
             return;
 
         var eigene = PlayerState.EntityId;
-
-        if (urheber == eigene || ziel != eigene)
+        if (eigene == 0)
             return;
 
-        var (name, welt) = Spieler(urheber);
+        var ausgehend = urheber == eigene;
+        var andere = ausgehend ? ziel : urheber;
+
+        if (andere == 0 || andere == eigene)
+            return;
+
+        // Fremde Emotes auf Dritte gehen uns nichts an.
+        if (!ausgehend && ziel != eigene)
+            return;
+
+        var (name, welt) = Spieler(andere);
         if (string.IsNullOrEmpty(name))
             return;
 
@@ -130,10 +182,11 @@ public sealed class Plugin : IDalamudPlugin
             SenderName: name,
             SenderWorldId: welt,
             Channel: ChatChannel.StandardEmote,
-            TargetedAtMe: true,
-            FromSelf: false,
+            TargetedAtMe: !ausgehend,
+            FromSelf: ausgehend,
             Text: string.Empty,
-            EmoteId: emoteId));
+            EmoteId: emoteId,
+            Outgoing: ausgehend));
     }
 
     /// <summary>Name und Heimatwelt zu einer EntityId aus der Objektliste.</summary>
@@ -155,7 +208,13 @@ public sealed class Plugin : IDalamudPlugin
 
     private void Oeffnen() => window.Visible = !window.Visible;
 
-    private void Tick(IFramework _) => presenter.Tick();
+    private void Tick(IFramework _)
+    {
+        presenter.Tick();
+
+        if (ungespeichert && DateTime.UtcNow >= naechstesSpeichern)
+            SpeichereJetzt();
+    }
 
     private static string Vorname(string? voll)
     {
@@ -181,7 +240,7 @@ public sealed class Plugin : IDalamudPlugin
         emotes.Dispose();
         presenter.Clear();
 
-        config.FromStore(counters);
-        PluginInterface.SavePluginConfig(config);
+        // Beim Abschalten immer schreiben, egal wie kurz der letzte Puls her ist.
+        SpeichereJetzt();
     }
 }

@@ -7,8 +7,27 @@ namespace EnCounter.Core;
 /// </summary>
 public sealed class Rule
 {
-    public string Name { get; set; } = "Neue Regel";
+    /// <summary>
+    /// Unveränderlicher Schlüssel, unter dem die Zähler liegen.
+    ///
+    /// Früher hingen sie am Namen - eine Umbenennung hat damit den Zählerstand
+    /// gelöscht. Leer heißt: aus einer älteren Fassung geladen, die Id wird beim
+    /// Wandern der Konfiguration vergeben.
+    /// </summary>
+    public string Id { get; set; } = string.Empty;
+
+    public string Name { get; set; } = "New rule";
     public bool Enabled { get; set; } = true;
+
+    /// <summary>Vergibt eine Id, falls noch keine da ist. Gibt zurück, ob etwas geschah.</summary>
+    public bool EnsureId()
+    {
+        if (!string.IsNullOrEmpty(Id))
+            return false;
+
+        Id = Guid.NewGuid().ToString("N");
+        return true;
+    }
 
     /// <summary>Kanäle, auf die gehört wird. Leer heißt: keiner.</summary>
     public List<ChatChannel> Channels { get; set; } = [];
@@ -32,6 +51,18 @@ public sealed class Rule
     public List<uint> EmoteIds { get; set; } = [];
 
     /// <summary>
+    /// Ob empfangene, gegebene oder beide Emotes zählen. Gezählt wird immer die
+    /// **andere** Person - siehe <see cref="CountDirection"/>.
+    /// </summary>
+    public CountDirection Direction { get; set; } = CountDirection.Received;
+
+    /// <summary>
+    /// Mindestabstand in Sekunden, bevor dieselbe Person erneut zählt. 0 schaltet die
+    /// Bremse ab. Gegen Makros, die ein Emote im Sekundentakt wiederholen.
+    /// </summary>
+    public int CooldownSeconds { get; set; } = 3;
+
+    /// <summary>
     /// Ob die Meldung den Namen des Ausloesers nennt.
     ///
     /// Mit Namen zeigt sie den Zaehler **dieser Person**, ohne Namen die **Summe ueber
@@ -40,10 +71,10 @@ public sealed class Rule
     public bool ShowName { get; set; } = true;
 
     /// <summary>Mit Namen. Zeigt den Zaehler der ausloesenden Person.</summary>
-    public string PersonalTemplate { get; set; } = "[Name] petted you [Anzahl]x";
+    public string PersonalTemplate { get; set; } = "[Name] petted you [Count]x";
 
     /// <summary>Ohne Namen. Zeigt die Summe ueber alle Personen.</summary>
-    public string GeneralTemplate { get; set; } = "petted [Anzahl]x";
+    public string GeneralTemplate { get; set; } = "petted [Count]x";
 
     public int DisplaySeconds { get; set; } = 10;
 

@@ -103,4 +103,45 @@ public class TitleTemplateTests
         Assert.Equal(32, TitleTemplate.MaxTitleLength);
         Assert.Equal(13, TitleTemplate.MaxPersonalFreeText);
     }
+
+    // --- Englischer Platzhalter -----------------------------------------------
+
+    [Fact]
+    public void Count_wird_gefuellt()
+    {
+        Assert.Equal("Enju petted you 5x",
+            TitleTemplate.Render("[Name] petted you [Count]x", "Enju", 5));
+    }
+
+    /// <summary>
+    /// Die alte deutsche Schreibweise muss weiter funktionieren: Wer sie von Hand in
+    /// eine Vorlage tippt, soll keine wortwoertliche Klammer im Titel stehen haben.
+    /// </summary>
+    [Fact]
+    public void Anzahl_wird_weiterhin_gefuellt()
+    {
+        Assert.Equal("Enju petted you 5x",
+            TitleTemplate.Render("[Name] petted you [Anzahl]x", "Enju", 5));
+    }
+
+    [Fact]
+    public void Count_zaehlt_nicht_zum_freien_Text()
+    {
+        Assert.Equal(13, TitleTemplate.FreeTextLength("[Name] petted you [Count]x"));
+        Assert.Equal(15, TitleTemplate.MaxNameLengthFor("[Name] petted you [Count]x"));
+    }
+
+    [Fact]
+    public void Modernise_schreibt_die_alte_Schreibweise_um()
+    {
+        Assert.Equal("[Name] petted me [Count]x",
+            TitleTemplate.Modernise("[Name] petted me [Anzahl]x"));
+    }
+
+    [Fact]
+    public void Modernise_laesst_neue_Vorlagen_unberuehrt()
+    {
+        const string vorlage = "[Name] petted me [Count]x";
+        Assert.Equal(vorlage, TitleTemplate.Modernise(vorlage));
+    }
 }

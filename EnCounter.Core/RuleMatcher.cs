@@ -8,8 +8,10 @@ public static class RuleMatcher
         if (!rule.Enabled)
             return false;
 
-        // Eigene Nachrichten zaehlen nie - sonst treibt man den eigenen Zaehler hoch.
-        if (e.FromSelf)
+        // Eigene Chatnachrichten zaehlen nie - sonst treibt man den eigenen Zaehler
+        // hoch. Ausgehende Emotes sind der Sonderfall: Dort ist "von mir" gerade der
+        // Sinn der Sache, und gezaehlt wird ohnehin die andere Person.
+        if (e.FromSelf && !e.Outgoing)
             return false;
 
         if (!rule.Channels.Contains(e.Channel))
@@ -19,7 +21,12 @@ public static class RuleMatcher
         // war, zaehlt nicht.
         if (IsEmote(e.Channel))
         {
-            if (!e.TargetedAtMe)
+            if (!MatchesDirection(rule.Direction, e.Outgoing))
+                return false;
+
+            // Nur fuer empfangene Emotes: Bei ausgehenden hat der Aufrufer schon
+            // geprueft, dass ueberhaupt jemand gemeint war.
+            if (!e.Outgoing && !e.TargetedAtMe)
                 return false;
 
             // Leere Liste heisst: jedes Emote zaehlt.
@@ -41,6 +48,18 @@ public static class RuleMatcher
             !string.IsNullOrWhiteSpace(t) &&
             e.Text.Contains(t, StringComparison.CurrentCultureIgnoreCase));
     }
+
+    /// <summary>
+    /// Die Richtung wird nur bei Emotes geprueft. Im Chat gibt es keinen
+    /// verlaesslichen Empfaenger - wer in Say etwas sagt, sagt es an alle, und ein
+    /// Zaehler braucht eine Person.
+    /// </summary>
+    private static bool MatchesDirection(CountDirection wanted, bool outgoing) => wanted switch
+    {
+        CountDirection.Received => !outgoing,
+        CountDirection.Given => outgoing,
+        _ => true,
+    };
 
     private static bool IsEmote(ChatChannel channel) =>
         channel is ChatChannel.StandardEmote or ChatChannel.CustomEmote;
