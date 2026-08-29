@@ -38,6 +38,15 @@ public sealed class Plugin : IDalamudPlugin
     private DateTime naechstesSpeichern = DateTime.MinValue;
     private static readonly TimeSpan Speicherabstand = TimeSpan.FromSeconds(2);
 
+    /// <summary>
+    /// Die zuletzt erkannte Person, **so wie EnCounter sie sieht**.
+    ///
+    /// Ohne diese Anzeige rät man beim Eintragen: Steht in `Only from` etwas, das nicht
+    /// greift, sieht man nur, dass nichts passiert - nicht, woran es liegt. Hier steht
+    /// die Wahrheit zum Vergleichen daneben.
+    /// </summary>
+    private string zuletztGesehen = string.Empty;
+
     public Plugin()
     {
         config = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
@@ -72,6 +81,7 @@ public sealed class Plugin : IDalamudPlugin
         window = new ConfigWindow(config, counters, Data, konfigOrdner,
                                   () => PlayerState.IsLoaded ? PlayerState.ContentId : 0ul,
                                   AktuellesZiel,
+                                  () => zuletztGesehen,
                                   MerkeAenderung);
 
         PluginInterface.UiBuilder.Draw += window.Draw;
@@ -116,6 +126,15 @@ public sealed class Plugin : IDalamudPlugin
         var eigenerName = Vorname(PlayerState.CharacterName);
         if (string.IsNullOrEmpty(eigenerName))
             return;
+
+        // Vor jeder Regelpruefung festhalten, wen wir erkannt haben - auch wenn danach
+        // keine Regel greift. Gerade dann ist die Angabe wertvoll.
+        if (!e.FromSelf || e.Outgoing)
+        {
+            zuletztGesehen = string.IsNullOrEmpty(e.SenderWorld)
+                ? $"{e.SenderName}   (no world)"
+                : $"{e.SenderName}@{e.SenderWorld}";
+        }
 
         var passende = config.Rules.Where(r => RuleMatcher.Matches(r, e, eigenerName)).ToList();
         if (passende.Count == 0)

@@ -66,6 +66,36 @@ public static partial class TitleTemplate
         return leer > 0 ? voll[..leer] : voll;
     }
 
+    /// <summary>
+    /// Entfernt Steuerzeichen aus einem Titel.
+    ///
+    /// **Honorific verwirft jeden Titel, der welche enthält** - `CustomTitle.IsValid`
+    /// gibt dann `false`, und es erscheint nichts. Von außen sieht das aus, als hätte
+    /// die Regel nicht gegriffen.
+    ///
+    /// Sie geraten leicht hinein: Wer Text aus dem Spiel kopiert, schleppt Reste eines
+    /// Auto-Translate-Payloads mit (0x02 leitet einen ein), und ein Tabulator oder
+    /// Zeilenumbruch ist im Eingabefeld unsichtbar. Am Fund vom 29.08.2026 gemessen,
+    /// indem `IsValid` aus Honorific 1.7.5.0 direkt aufgerufen wurde.
+    ///
+    /// Sichtbare Deko - Sterne, Herzen, Emoji, FFXIVs eigene Symbole - ist dagegen
+    /// unbedenklich und bleibt unangetastet.
+    /// </summary>
+    public static string Clean(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return string.Empty;
+
+        if (!text.Any(char.IsControl))
+            return text;
+
+        return new string([.. text.Where(c => !char.IsControl(c))]);
+    }
+
+    /// <summary>Ob eine Vorlage Zeichen enthält, die Honorific den Titel verwerfen lassen.</summary>
+    public static bool HasControlCharacters(string? text) =>
+        text is not null && text.Any(char.IsControl);
+
     public static string Render(string template, string? name, int count) =>
         (template ?? string.Empty)
             .Replace("[Name]", name ?? string.Empty)
@@ -87,18 +117,20 @@ public static partial class TitleTemplate
     {
         var (mitNamen, ohneNamen) = VorlagenFuer(rule, outgoing);
 
+        // Steuerzeichen wuerden Honorific den ganzen Titel verwerfen lassen - siehe
+        // Clean. Lieber ohne sie anzeigen als gar nicht.
         if (!rule.ShowName)
-            return Render(ohneNamen, null, total);
+            return Clean(Render(ohneNamen, null, total));
 
         // Gespeichert wird der **volle** Name, damit zwei „Rayleigh" auf derselben
         // Welt auseinandergehalten werden. Im Titel steht trotzdem nur der Vorname -
         // für beides zusammen reichen die 32 Zeichen nie.
-        var persoenlich = Render(mitNamen, FirstName(name), personal);
+        var persoenlich = Clean(Render(mitNamen, FirstName(name), personal));
 
         if (persoenlich.Length <= MaxTitleLength)
             return persoenlich;
 
-        return Render(ohneNamen, null, total);
+        return Clean(Render(ohneNamen, null, total));
     }
 
     /// <summary>

@@ -26,6 +26,7 @@ public sealed class ConfigWindow(
     string konfigOrdner,
     Func<ulong> eigeneCid,
     Func<string?> aktuellesZiel,
+    Func<string> zuletztGesehen,
     Action save)
 {
     private const uint Warnfarbe = 0xFF3333FFu;
@@ -535,6 +536,31 @@ public sealed class ConfigWindow(
         ImGui.TextColored(Graufarbe, "Full name and world, for example:");
         ImGui.TextColored(Graufarbe, "Stella Unibell@Shiva");
 
+        // Was EnCounter zuletzt tatsaechlich erkannt hat. Ohne diese Zeile raet man
+        // beim Eintragen - ein Eintrag, der nicht greift, sieht aus wie einer, der
+        // greift.
+        var gesehen = zuletztGesehen();
+
+        if (!string.IsNullOrEmpty(gesehen))
+        {
+            ImGui.Spacing();
+            ImGui.TextColored(Graufarbe, "Last recognised:");
+            ImGui.SameLine();
+            ImGui.TextColored(Hinweisfarbe, gesehen);
+
+            if (!gesehen.Contains("(no world)") &&
+                !regel.OnlyFrom.Contains(gesehen, StringComparer.CurrentCultureIgnoreCase))
+            {
+                ImGui.SameLine();
+
+                if (ImGui.Button("Add##gesehen"))
+                {
+                    regel.OnlyFrom.Add(gesehen);
+                    save();
+                }
+            }
+        }
+
         ImGui.Spacing();
 
         for (var i = 0; i < regel.OnlyFrom.Count; i++)
@@ -1042,6 +1068,21 @@ public sealed class ConfigWindow(
         {
             ImGui.TextColored(Graufarbe, $"      uses: {ersatz}");
             return;
+        }
+
+        // Steuerzeichen sind im Eingabefeld unsichtbar, lassen Honorific aber den
+        // ganzen Titel verwerfen. Angezeigt wird trotzdem etwas - die gereinigte
+        // Fassung -, aber wer sie loswird, hat auch die Vorlage wieder im Griff.
+        if (TitleTemplate.HasControlCharacters(text))
+        {
+            ImGui.TextColored(Warnfarbe, "      Contains invisible control characters.");
+            ImGui.SameLine();
+
+            if (ImGui.Button($"Clean up##{label}"))
+            {
+                setzen(TitleTemplate.Clean(text));
+                save();
+            }
         }
 
         var benutzt = TitleTemplate.FreeTextLength(text);

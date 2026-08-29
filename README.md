@@ -77,6 +77,17 @@ name would say nothing.
 default; it locks per rule *and* per person, so one busy emoter cannot block everyone
 else. Set it to zero to count every single event.
 
+## Invisible characters
+
+Honorific refuses any title containing control characters — silently, and the whole
+title at once. They are easy to pick up: copying text out of the game brings along the
+remains of an auto-translate payload, and a stray tab is invisible in a text field.
+
+EnCounter strips them before handing the title over, so a template that carries them
+still works. Visible decoration — stars, hearts, emoji, the game's own symbols — passes
+through untouched; Honorific has never had a problem with those. The settings window
+flags a template that contains control characters and offers to clean it up.
+
 ## Coming from PatMe
 
 *Import...* in the rule list takes counts from **PatMe** and **PatMe Honorific** into
