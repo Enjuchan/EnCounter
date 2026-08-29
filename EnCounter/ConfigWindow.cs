@@ -25,6 +25,7 @@ public sealed class ConfigWindow(
     IDataManager data,
     string konfigOrdner,
     Func<ulong> eigeneCid,
+    Func<string?> aktuellesZiel,
     Action save)
 {
     private const uint Warnfarbe = 0xFF3333FFu;
@@ -145,6 +146,52 @@ public sealed class ConfigWindow(
     private Rule? Gewaehlt =>
         ausgewaehlt >= 0 && ausgewaehlt < config.Rules.Count ? config.Rules[ausgewaehlt] : null;
 
+    /// <summary>
+    /// Regel nach oben oder unten schieben.
+    ///
+    /// Nötig, weil bei **gleich genauen** Regeln die Reihenfolge entscheidet, welche
+    /// die Meldung stellt. Wer zwei Regeln für dieselbe Person und dasselbe Emote
+    /// baut, kann sonst nicht bestimmen, welcher Text erscheint.
+    /// </summary>
+    private void DrawReihenfolge()
+    {
+        var kannHoch = ausgewaehlt > 0;
+        var kannRunter = ausgewaehlt >= 0 && ausgewaehlt < config.Rules.Count - 1;
+
+        if (!kannHoch)
+            ImGui.BeginDisabled();
+
+        var hoch = ImGui.Button("Up", new(95, 0)) && kannHoch;
+
+        if (!kannHoch)
+            ImGui.EndDisabled();
+
+        ImGui.SameLine();
+
+        if (!kannRunter)
+            ImGui.BeginDisabled();
+
+        var runter = ImGui.Button("Down", new(95, 0)) && kannRunter;
+
+        if (!kannRunter)
+            ImGui.EndDisabled();
+
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            ImGui.SetTooltip("Among equally specific rules, the upper one shows its text.");
+
+        if (hoch)
+            Tausche(ausgewaehlt, ausgewaehlt - 1);
+        else if (runter)
+            Tausche(ausgewaehlt, ausgewaehlt + 1);
+    }
+
+    private void Tausche(int a, int b)
+    {
+        (config.Rules[a], config.Rules[b]) = (config.Rules[b], config.Rules[a]);
+        ausgewaehlt = b;
+        save();
+    }
+
     // ------------------------------------------------------------------ links
 
     private void DrawLinkeSpalte()
@@ -181,6 +228,8 @@ public sealed class ConfigWindow(
 
         ImGui.Separator();
 
+        DrawReihenfolge();
+
         if (ImGui.Button("Add", new(95, 0)))
         {
             var neu = new Rule { Name = $"Rule {config.Rules.Count + 1}" };
@@ -194,7 +243,7 @@ public sealed class ConfigWindow(
 
         if (ImGui.Button("Duplicate", new(95, 0)) && Gewaehlt is { } vorlage)
         {
-            config.Rules.Insert(ausgewaehlt + 1, Kopiere(vorlage));
+            config.Rules.Insert(ausgewaehlt + 1, vorlage.Copy($"{vorlage.Name} (copy)"));
             ausgewaehlt++;
             save();
         }
@@ -203,7 +252,22 @@ public sealed class ConfigWindow(
         if (ImGui.IsItemHovered())
             ImGui.SetTooltip("Same settings, own counter, starting at zero.");
 
-        if (ImGui.Button("Delete", new(196, 0)) && Gewaehlt is not null)
+        // Loeschen verlangt Shift. Eine Regel ist schnell gebaut und schnell weg;
+        // ein Fehlklick hier kostet alle Einstellungen darin.
+        var shift = ImGui.GetIO().KeyShift;
+
+        if (!shift)
+            ImGui.BeginDisabled();
+
+        var geloescht = ImGui.Button("Delete", new(196, 0)) && shift && Gewaehlt is not null;
+
+        if (!shift)
+            ImGui.EndDisabled();
+
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            ImGui.SetTooltip("Hold Shift to delete.");
+
+        if (geloescht)
         {
             // Der Zaehler bleibt stehen: Er gehoert dem Ereignis, nicht dieser Regel.
             // Eine neue Dote-Regel findet ihren Stand spaeter wieder vor.
@@ -381,39 +445,6 @@ public sealed class ConfigWindow(
             ImGui.TextColored(Hinweisfarbe, "found, but has not counted anything");
     }
 
-    /// <summary>
-    /// Tiefe Kopie mit eigener Id. Die Listen müssen neu angelegt werden - sonst
-    /// teilen sich Original und Kopie dieselben Kanäle, und ein Häkchen wirkt in
-    /// beiden.
-    /// </summary>
-    private static Rule Kopiere(Rule v)
-    {
-        var kopie = new Rule
-        {
-            Name = $"{v.Name} (copy)",
-            Enabled = v.Enabled,
-            Channels = [.. v.Channels],
-            TriggerTexts = [.. v.TriggerTexts],
-            EmoteIds = [.. v.EmoteIds],
-            RequiresOwnName = v.RequiresOwnName,
-            Direction = v.Direction,
-            CooldownSeconds = v.CooldownSeconds,
-            ShowName = v.ShowName,
-            PersonalTemplate = v.PersonalTemplate,
-            GeneralTemplate = v.GeneralTemplate,
-            DisplaySeconds = v.DisplaySeconds,
-            UseColours = v.UseColours,
-            ColourR = v.ColourR, ColourG = v.ColourG, ColourB = v.ColourB,
-            GlowR = v.GlowR, GlowG = v.GlowG, GlowB = v.GlowB,
-            UseGradient = v.UseGradient,
-            Colour3R = v.Colour3R, Colour3G = v.Colour3G, Colour3B = v.Colour3B,
-            GradientStyle = v.GradientStyle,
-        };
-
-        kopie.EnsureId();
-        return kopie;
-    }
-
     // ----------------------------------------------------------------- rechts
 
     private void DrawEditor(Rule regel)
@@ -497,7 +528,14 @@ public sealed class ConfigWindow(
 
         ImGui.TextColored(Graufarbe, regel.OnlyFrom.Count == 0
             ? "Empty: anyone counts."
-            : "Only these people count.");
+            : "Only these people count - and this rule's text wins over a general one.");
+
+        // Nur die vollstaendige Form ist eindeutig: Vornamen wiederholen sich, und
+        // Namen sind in FFXIV ohnehin nur pro Welt eindeutig.
+        ImGui.TextColored(Graufarbe, "Full name and world, for example:");
+        ImGui.TextColored(Graufarbe, "Stella Unibell@Shiva");
+
+        ImGui.Spacing();
 
         for (var i = 0; i < regel.OnlyFrom.Count; i++)
         {
@@ -509,19 +547,62 @@ public sealed class ConfigWindow(
             }
 
             ImGui.SameLine();
-            ImGui.TextUnformatted(regel.OnlyFrom[i]);
+
+            var vollstaendig = RuleMatcher.IstVollstaendig(regel.OnlyFrom[i]);
+
+            ImGui.TextColored(vollstaendig ? 0xFFFFFFFFu : Warnfarbe, regel.OnlyFrom[i]);
+
+            if (vollstaendig)
+                continue;
+
+            ImGui.SameLine();
+            ImGui.TextColored(Warnfarbe, "incomplete - never matches");
         }
 
         ImGui.SetNextItemWidth(220);
-        ImGui.InputTextWithHint("##newperson", "add a name...", ref neuerName, 64);
+        ImGui.InputTextWithHint("##newperson", "Firstname Lastname@World", ref neuerName, 64);
+
         ImGui.SameLine();
 
-        if (!ImGui.Button("Add##person") || string.IsNullOrWhiteSpace(neuerName))
+        if (ImGui.Button("Add##person") && !string.IsNullOrWhiteSpace(neuerName))
+        {
+            regel.OnlyFrom.Add(neuerName.Trim());
+            neuerName = string.Empty;
+            save();
             return;
+        }
 
-        regel.OnlyFrom.Add(neuerName.Trim());
-        neuerName = string.Empty;
-        save();
+        ImGui.SameLine();
+
+        // Bequemer Weg zum richtigen Namen: Wer im Spiel steht, tippt sich nicht
+        // vertippt - und die Welt kommt gleich mit.
+        var ziel = aktuellesZiel();
+
+        if (ziel is null)
+        {
+            ImGui.BeginDisabled();
+            ImGui.Button("Current target");
+            ImGui.EndDisabled();
+
+            if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+                ImGui.SetTooltip("Target a player in game to use this.");
+
+            return;
+        }
+
+        if (!ImGui.Button("Current target"))
+        {
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip($"Add {ziel}");
+
+            return;
+        }
+
+        if (!regel.OnlyFrom.Contains(ziel, StringComparer.CurrentCultureIgnoreCase))
+        {
+            regel.OnlyFrom.Add(ziel);
+            save();
+        }
     }
 
     /// <summary>
@@ -1176,7 +1257,7 @@ public sealed class ConfigWindow(
 
             ImGui.TableNextColumn();
 
-            if (!ImGui.Button($"Reset##ges{basis}"))
+            if (!ShiftKnopf($"Reset##ges{basis}", "reset this event for everyone"))
                 continue;
 
             counters.Reset(basis);
@@ -1242,15 +1323,13 @@ public sealed class ConfigWindow(
             {
                 var schluessel = gegeben ? basis + CounterScope.GivenSuffix : basis;
 
-                if (ImGui.Button($"x##{kuerzel}{schluessel}{person.Name}{person.WorldId}"))
+                if (ShiftKnopf($"x##{kuerzel}{schluessel}{person.Name}{person.WorldId}",
+                               "reset this person for this event"))
                 {
                     counters.Remove(schluessel, person);
                     save();
                     break;
                 }
-
-                if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip("Reset this person for this event.");
 
                 ImGui.SameLine();
                 ImGui.TextUnformatted($"{anzahl,5}   {Beschreibe(basis).Name}");
@@ -1258,6 +1337,31 @@ public sealed class ConfigWindow(
 
             ImGui.Unindent();
         }
+    }
+
+    /// <summary>
+    /// Ein Knopf, der Shift verlangt.
+    ///
+    /// Für alles, was gesammelte Zählungen wegwirft: Die sind über Wochen entstanden
+    /// und mit einem Klick nicht wiederherzustellen. Triggerwörter und Emote-Auswahlen
+    /// tippt man dagegen in Sekunden neu - dort wäre die Hürde nur lästig.
+    /// </summary>
+    private static bool ShiftKnopf(string beschriftung, string was)
+    {
+        var shift = ImGui.GetIO().KeyShift;
+
+        if (!shift)
+            ImGui.BeginDisabled();
+
+        var gedrueckt = ImGui.Button(beschriftung) && shift;
+
+        if (!shift)
+            ImGui.EndDisabled();
+
+        if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+            ImGui.SetTooltip($"Hold Shift to {was}");
+
+        return gedrueckt;
     }
 
     private static bool IstGegeben(string schluessel) =>

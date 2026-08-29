@@ -27,6 +27,34 @@ public sealed class CounterStore
         return perPerson[key] = count + 1;
     }
 
+    /// <summary>
+    /// Führt einen Stand, der noch unter dem bloßen Vornamen liegt, mit dem vollen
+    /// Namen zusammen.
+    ///
+    /// Bis 0.3.1.0 wurde nur der Vorname gespeichert. Ohne diese Zusammenführung
+    /// stünde dieselbe Person ab jetzt zweimal in der Liste - einmal mit altem Stand,
+    /// einmal von vorn.
+    ///
+    /// Dass dabei zwei echte Namensvettern verschmelzen könnten, ist keine
+    /// Verschlechterung: Unter dem alten Vornamen lagen sie ohnehin schon gemeinsam.
+    /// </summary>
+    public void MergeShortName(string ruleId, CounterKey person)
+    {
+        var leer = person.Name.IndexOf(' ');
+        if (leer <= 0)
+            return;
+
+        if (!counters.TryGetValue(ruleId, out var perPerson))
+            return;
+
+        var kurz = new CounterKey(person.Name[..leer], person.WorldId);
+
+        if (!perPerson.Remove(kurz, out var alt))
+            return;
+
+        perPerson[person] = perPerson.GetValueOrDefault(person) + alt;
+    }
+
     public int GetPersonal(string ruleId, CounterKey key) =>
         counters.TryGetValue(ruleId, out var p) && p.TryGetValue(key, out var c) ? c : 0;
 

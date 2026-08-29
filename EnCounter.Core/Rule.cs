@@ -37,6 +37,49 @@ public sealed class Rule
     /// </summary>
     public string LegacyCounterId(bool outgoing) => outgoing ? Id + ":given" : Id;
 
+    /// <summary>
+    /// Vollständige Kopie mit eigener Id.
+    ///
+    /// **Jedes neue Feld gehört hier hinein.** Diese Methode lag früher in der
+    /// Oberfläche und wurde beim Erweitern viermal vergessen - `OnlyFrom`, `IsPrefix`
+    /// und beide Gegenvorlagen fehlten still. Deshalb steht sie jetzt hier, wo ein
+    /// Test sie prüfen kann.
+    ///
+    /// Die Listen werden neu angelegt: Sonst teilen sich Original und Kopie dieselben
+    /// Kanäle, und ein Häkchen wirkt in beiden.
+    /// </summary>
+    public Rule Copy(string? name = null)
+    {
+        var kopie = new Rule
+        {
+            Name = name ?? Name,
+            Enabled = Enabled,
+            Channels = [.. Channels],
+            TriggerTexts = [.. TriggerTexts],
+            RequiresOwnName = RequiresOwnName,
+            EmoteIds = [.. EmoteIds],
+            Direction = Direction,
+            CooldownSeconds = CooldownSeconds,
+            ShowName = ShowName,
+            PersonalTemplate = PersonalTemplate,
+            GeneralTemplate = GeneralTemplate,
+            GivenPersonalTemplate = GivenPersonalTemplate,
+            GivenGeneralTemplate = GivenGeneralTemplate,
+            OnlyFrom = [.. OnlyFrom],
+            IsPrefix = IsPrefix,
+            DisplaySeconds = DisplaySeconds,
+            UseColours = UseColours,
+            ColourR = ColourR, ColourG = ColourG, ColourB = ColourB,
+            GlowR = GlowR, GlowG = GlowG, GlowB = GlowB,
+            UseGradient = UseGradient,
+            Colour3R = Colour3R, Colour3G = Colour3G, Colour3B = Colour3B,
+            GradientStyle = GradientStyle,
+        };
+
+        kopie.EnsureId();
+        return kopie;
+    }
+
     /// <summary>Kanäle, auf die gehört wird. Leer heißt: keiner.</summary>
     public List<ChatChannel> Channels { get; set; } = [];
 

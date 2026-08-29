@@ -58,8 +58,16 @@ counts the same thing — which is the point, and why it says so.
 **Counts are per person and permanent.** A rule can show either how often *this* person
 did something, or the total across everyone.
 
-**Only from** limits a rule to named people. Type the full name if you like; the first
-name is what gets compared.
+**Only from** limits a rule to named people, written in full: `Stella Unibell@Shiva`.
+The *Current target* button fills that in from whoever you have selected in game.
+Shorter forms are rejected and marked in the list — first names repeat, and names are
+only unique per world, so anything less would quietly count strangers too.
+
+**A rule that names people wins the message** over a general one covering the same
+thing. That is how you give one person their own text: duplicate the rule, add the
+name, change the wording. Both still count; only the more specific one speaks. Where
+two rules are equally specific, the upper one wins, and *Up* / *Down* let you decide
+which that is.
 
 **Both directions.** An emote rule counts what others aim at you, what you aim at
 others, or both. The counter always belongs to the *other* person — a tally on your own

@@ -62,7 +62,8 @@ public sealed class ChatWatcher : IDisposable
             Channel: (ChatChannel)kanal,
             TargetedAtMe: message.TargetKind == XivChatRelationKind.LocalPlayer,
             FromSelf: message.SourceKind == XivChatRelationKind.LocalPlayer,
-            Text: message.Message.TextValue));
+            Text: message.Message.TextValue,
+            SenderWorld: WorldCatalog.NameOf(Plugin.Data, world)));
     }
 
     /// <summary>
@@ -82,14 +83,14 @@ public sealed class ChatWatcher : IDisposable
 
         // Kein Payload gefunden - bleibt der reine Text des Absenderfelds.
         var text = message.Sender.TextValue;
-        return string.IsNullOrWhiteSpace(text) ? (string.Empty, 0u) : (Vorname(text), 0u);
+        return string.IsNullOrWhiteSpace(text) ? (string.Empty, 0u) : (text.Trim(), 0u);
     }
 
     private static (string Name, uint World)? AusPayloads(Dalamud.Game.Text.SeStringHandling.SeString se)
     {
         foreach (var payload in se.Payloads)
             if (payload is PlayerPayload spieler)
-                return (Vorname(spieler.PlayerName), spieler.World.RowId);
+                return (spieler.PlayerName, spieler.World.RowId);
 
         return null;
     }

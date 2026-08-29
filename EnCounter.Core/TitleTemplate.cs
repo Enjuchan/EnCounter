@@ -56,6 +56,16 @@ public static partial class TitleTemplate
         return rest < MinFirstName ? 0 : Math.Min(rest, MaxFirstName);
     }
 
+    /// <summary>Der Vorname aus einem vollen Namen. Für die Anzeige im Titel.</summary>
+    public static string FirstName(string? voll)
+    {
+        if (string.IsNullOrEmpty(voll))
+            return string.Empty;
+
+        var leer = voll.IndexOf(' ');
+        return leer > 0 ? voll[..leer] : voll;
+    }
+
     public static string Render(string template, string? name, int count) =>
         (template ?? string.Empty)
             .Replace("[Name]", name ?? string.Empty)
@@ -80,7 +90,10 @@ public static partial class TitleTemplate
         if (!rule.ShowName)
             return Render(ohneNamen, null, total);
 
-        var persoenlich = Render(mitNamen, name, personal);
+        // Gespeichert wird der **volle** Name, damit zwei „Rayleigh" auf derselben
+        // Welt auseinandergehalten werden. Im Titel steht trotzdem nur der Vorname -
+        // für beides zusammen reichen die 32 Zeichen nie.
+        var persoenlich = Render(mitNamen, FirstName(name), personal);
 
         if (persoenlich.Length <= MaxTitleLength)
             return persoenlich;

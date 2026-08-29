@@ -16,6 +16,7 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static IObjectTable Objects { get; private set; } = null!;
     [PluginService] internal static ICommandManager Commands { get; private set; } = null!;
     [PluginService] internal static IDataManager Data { get; private set; } = null!;
+    [PluginService] internal static ITargetManager Targets { get; private set; } = null!;
 
     private readonly Configuration config;
     private readonly CounterStore counters;
@@ -70,6 +71,7 @@ public sealed class Plugin : IDalamudPlugin
         // Die ContentId trennt die eigenen Charaktere - PatMe fuehrt seine Staende so.
         window = new ConfigWindow(config, counters, Data, konfigOrdner,
                                   () => PlayerState.IsLoaded ? PlayerState.ContentId : 0ul,
+                                  AktuellesZiel,
                                   MerkeAenderung);
 
         PluginInterface.UiBuilder.Draw += window.Draw;
@@ -144,6 +146,8 @@ public sealed class Plugin : IDalamudPlugin
             if (!cooldowns.Allow(s, person, sperre, jetzt))
                 continue;
 
+            // Staende aus der Zeit, als nur der Vorname gespeichert wurde.
+            counters.MergeShortName(s, person);
             counters.Increment(s, person);
             gezaehlt.Add(s);
         }
@@ -153,10 +157,13 @@ public sealed class Plugin : IDalamudPlugin
 
         MerkeAenderung();
 
-        // Angezeigt wird nur eine Meldung: die der ersten Regel, die tatsaechlich
-        // gezaehlt hat. Was sie zeigt, liest sie aus dem gemeinsamen Stand - eine
-        // neue Regel kennt damit sofort, was vor ihr gezaehlt wurde.
-        var zeigende = passende.FirstOrDefault(r => gezaehlt.Contains(CounterScope.ForEvent(r, e)));
+        // Angezeigt wird nur eine Meldung - die der **genauesten** Regel, die
+        // tatsaechlich gezaehlt hat. Eine Regel nur fuer eine bestimmte Person
+        // gewinnt damit gegen die allgemeine, die dasselbe Emote abdeckt.
+        // Siehe RulePriority.
+        var zeigende = RulePriority.Winner(
+            passende.Where(r => gezaehlt.Contains(CounterScope.ForEvent(r, e))));
+
         if (zeigende is null)
             return;
 
@@ -224,7 +231,28 @@ public sealed class Plugin : IDalamudPlugin
             FromSelf: ausgehend,
             Text: string.Empty,
             EmoteId: emoteId,
-            Outgoing: ausgehend));
+            Outgoing: ausgehend,
+            SenderWorld: WorldCatalog.NameOf(Data, welt)));
+    }
+
+    /// <summary>
+    /// Das gerade anvisierte Ziel als `Vorname@Welt`, oder null.
+    ///
+    /// Nur Spieler: Ein anvisiertes Mobil oder ein NSC kann keine Regel auslösen, und
+    /// dessen Namen anzubieten wäre nur irreführend.
+    /// </summary>
+    private static string? AktuellesZiel()
+    {
+        if (Targets.Target is not Dalamud.Game.ClientState.Objects.SubKinds.IPlayerCharacter spieler)
+            return null;
+
+        var name = spieler.Name.TextValue;
+        if (string.IsNullOrEmpty(name))
+            return null;
+
+        var welt = WorldCatalog.NameOf(Data, spieler.HomeWorld.RowId);
+
+        return string.IsNullOrEmpty(welt) ? name : $"{name}@{welt}";
     }
 
     /// <summary>Name und Heimatwelt zu einer EntityId aus der Objektliste.</summary>
@@ -236,9 +264,9 @@ public sealed class Plugin : IDalamudPlugin
                 continue;
 
             if (o is Dalamud.Game.ClientState.Objects.SubKinds.IPlayerCharacter spieler)
-                return (Vorname(spieler.Name.TextValue), spieler.HomeWorld.RowId);
+                return (spieler.Name.TextValue, spieler.HomeWorld.RowId);
 
-            return (Vorname(o.Name.TextValue), 0u);
+            return (o.Name.TextValue, 0u);
         }
 
         return (string.Empty, 0u);

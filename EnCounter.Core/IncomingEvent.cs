@@ -20,4 +20,10 @@ public sealed record IncomingEvent(
     uint EmoteId = 0,
 
     /// <summary>Ob man es selbst getan hat, statt es zu empfangen. Nur bei Emotes.</summary>
-    bool Outgoing = false);
+    bool Outgoing = false,
+
+    /// <summary>
+    /// Heimatwelt als Name, für den Vergleich in <see cref="Rule.OnlyFrom"/>. Leer,
+    /// wenn sie nicht zu ermitteln war - dann greift ein Eintrag mit `@Welt` nicht.
+    /// </summary>
+    string SenderWorld = "");
