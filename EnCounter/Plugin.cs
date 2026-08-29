@@ -70,7 +70,7 @@ public sealed class Plugin : IDalamudPlugin
         var konfigOrdner = PluginInterface.ConfigFile.Directory?.FullName ?? string.Empty;
 
         // Die ContentId trennt die eigenen Charaktere - PatMe fuehrt seine Staende so.
-        window = new ConfigWindow(config, counters, Data, konfigOrdner,
+        window = new ConfigWindow(config, counters, cooldowns, Data, konfigOrdner,
                                   () => PlayerState.IsLoaded ? PlayerState.ContentId : 0ul,
                                   AktuellesZiel,
                                   MerkeAenderung);

@@ -34,15 +34,24 @@ public static class RuleMatcher
                 return false;
         }
 
+        // Namensliste: Nur diese Personen zaehlen. Gilt fuer Emotes wie fuer Chat.
+        if (rule.OnlyFrom.Count > 0 && !rule.OnlyFrom.Any(n => IstDieselbePerson(n, e)))
+            return false;
+
+        // **Textbedingungen gelten nur fuer Text.** Ein Emote hat keinen; sie wuerden
+        // sonst immer scheitern und die Regel stumm schalten.
+        //
+        // Das passiert leicht: Wer eine Chatregel dupliziert und auf Emotes umstellt,
+        // schleppt Triggerwoerter und Namensbezug mit - und sieht sie nicht mehr, weil
+        // die Oberflaeche sie bei Emote-Regeln ausblendet. Genau so gemeldet am
+        // 29.08.2026, die Regel konnte buchstaeblich nie greifen.
+        if (IsEmote(e.Channel))
+            return true;
+
         // Der Namensbezug gilt nicht fuer Kanaele, die ohnehin an einen gerichtet
         // sind. In einem Tell den eigenen Namen zu verlangen, kostet nur Treffer.
         if (rule.RequiresOwnName && !IsDirected(e.Channel) &&
             !e.Text.Contains(ownFirstName, StringComparison.CurrentCultureIgnoreCase))
-            return false;
-
-        // Namensliste: Nur diese Personen zaehlen. Verglichen wird der Vorname, weil
-        // nur der gespeichert wird - eingetippt werden darf trotzdem der volle Name.
-        if (rule.OnlyFrom.Count > 0 && !rule.OnlyFrom.Any(n => IstDieselbePerson(n, e)))
             return false;
 
         // Keine Triggertexte heisst: der Inhalt ist egal.

@@ -22,6 +22,7 @@ namespace EnCounter;
 public sealed class ConfigWindow(
     Configuration config,
     CounterStore counters,
+    CooldownGate cooldowns,
     IDataManager data,
     string konfigOrdner,
     Func<ulong> eigeneCid,
@@ -648,15 +649,33 @@ public sealed class ConfigWindow(
             return;
 
         var uebrig = regel.Channels.Count(k => !Emotekanaele.Contains(k));
-        if (uebrig == 0)
+
+        if (uebrig > 0)
+        {
+            ImGui.TextColored(Warnfarbe, $"This rule also still listens to {uebrig} chat channel(s).");
+
+            if (ImGui.Button("Remove them"))
+            {
+                regel.Channels.RemoveAll(k => !Emotekanaele.Contains(k));
+                save();
+            }
+        }
+
+        // Reste einer Chatregel, die auf Emotes umgestellt wurde. Sie wirken nicht
+        // mehr - ein Emote hat keinen Text -, stehen aber weiter in der Datei und
+        // verwirren beim naechsten Blick hinein.
+        var textreste = regel.TriggerTexts.Count > 0 || regel.RequiresOwnName;
+        if (!textreste)
             return;
 
-        ImGui.TextColored(Warnfarbe, $"This rule also still listens to {uebrig} chat channel(s).");
+        ImGui.TextColored(Hinweisfarbe, "Left over from a chat rule: trigger words or the name check.");
+        ImGui.TextColored(Graufarbe, "They are ignored for emotes - an emote carries no text.");
 
-        if (!ImGui.Button("Remove them"))
+        if (!ImGui.Button("Clear them"))
             return;
 
-        regel.Channels.RemoveAll(k => !Emotekanaele.Contains(k));
+        regel.TriggerTexts.Clear();
+        regel.RequiresOwnName = false;
         save();
     }
 
@@ -1277,6 +1296,12 @@ public sealed class ConfigWindow(
 
             counters.Reset(basis);
             counters.Reset(basis + CounterScope.GivenSuffix);
+
+            // Ohne das schluckt die Bremse den naechsten Treffer, und es sieht aus,
+            // als wuerde nach dem Zuruecksetzen gar nicht mehr gezaehlt.
+            cooldowns.Clear(basis);
+            cooldowns.Clear(basis + CounterScope.GivenSuffix);
+
             save();
             break;
         }
@@ -1342,6 +1367,7 @@ public sealed class ConfigWindow(
                                "reset this person for this event"))
                 {
                     counters.Remove(schluessel, person);
+                    cooldowns.Clear(schluessel, person);
                     save();
                     break;
                 }

@@ -36,4 +36,20 @@ public sealed class CooldownGate
 
     /// <summary>Alles vergessen - etwa wenn eine Regel gelöscht wurde.</summary>
     public void Clear() => letzte.Clear();
+
+    /// <summary>
+    /// Vergisst die Sperren eines Zählerraums.
+    ///
+    /// **Gehört zu jedem Zurücksetzen.** Sonst schluckt die Bremse den ersten Treffer
+    /// danach - und wer zurücksetzt, probiert es sofort aus. Es sieht dann aus, als
+    /// würde gar nicht mehr gezählt.
+    /// </summary>
+    public void Clear(string ruleId)
+    {
+        foreach (var schluessel in letzte.Keys.Where(k => k.RuleId == ruleId).ToList())
+            letzte.Remove(schluessel);
+    }
+
+    /// <summary>Vergisst die Sperre einer einzelnen Person in einem Zählerraum.</summary>
+    public void Clear(string ruleId, CounterKey person) => letzte.Remove((ruleId, person));
 }

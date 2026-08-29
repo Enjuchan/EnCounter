@@ -80,4 +80,60 @@ public class CooldownGateTests
         Assert.False(g.Allow("regel", Enju, 3, Start.AddSeconds(2)));
         Assert.True(g.Allow("regel", Enju, 3, Start.AddSeconds(3)));
     }
+
+    // --- Zuruecksetzen -------------------------------------------------------
+
+    /// <summary>
+    /// Der gemeldete Fall: Nach dem Zuruecksetzen probiert man es sofort aus - und die
+    /// Sperre vom letzten Treffer schluckt den ersten neuen. Es sieht aus, als wuerde
+    /// gar nicht mehr gezaehlt.
+    /// </summary>
+    [Fact]
+    public void Zuruecksetzen_hebt_die_Sperre_auf()
+    {
+        var g = new CooldownGate();
+        g.Allow("e:274", Enju, 3, Start);
+
+        g.Clear("e:274");
+
+        Assert.True(g.Allow("e:274", Enju, 3, Start.AddSeconds(1)));
+    }
+
+    [Fact]
+    public void Zuruecksetzen_trifft_alle_Personen_des_Raums()
+    {
+        var g = new CooldownGate();
+        g.Allow("e:274", Enju, 30, Start);
+        g.Allow("e:274", Mara, 30, Start);
+
+        g.Clear("e:274");
+
+        Assert.True(g.Allow("e:274", Enju, 30, Start.AddSeconds(1)));
+        Assert.True(g.Allow("e:274", Mara, 30, Start.AddSeconds(1)));
+    }
+
+    [Fact]
+    public void Zuruecksetzen_laesst_andere_Raeume_in_Ruhe()
+    {
+        var g = new CooldownGate();
+        g.Allow("e:274", Enju, 30, Start);
+        g.Allow("e:146", Enju, 30, Start);
+
+        g.Clear("e:274");
+
+        Assert.False(g.Allow("e:146", Enju, 30, Start.AddSeconds(1)));
+    }
+
+    [Fact]
+    public void Einzelne_Person_laesst_sich_freigeben()
+    {
+        var g = new CooldownGate();
+        g.Allow("e:274", Enju, 30, Start);
+        g.Allow("e:274", Mara, 30, Start);
+
+        g.Clear("e:274", Enju);
+
+        Assert.True(g.Allow("e:274", Enju, 30, Start.AddSeconds(1)));
+        Assert.False(g.Allow("e:274", Mara, 30, Start.AddSeconds(1)));
+    }
 }
