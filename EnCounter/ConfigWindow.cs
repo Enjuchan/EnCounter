@@ -26,7 +26,6 @@ public sealed class ConfigWindow(
     string konfigOrdner,
     Func<ulong> eigeneCid,
     Func<string?> aktuellesZiel,
-    Func<string> zuletztGesehen,
     Action save)
 {
     private const uint Warnfarbe = 0xFF3333FFu;
@@ -535,31 +534,6 @@ public sealed class ConfigWindow(
         // Namen sind in FFXIV ohnehin nur pro Welt eindeutig.
         ImGui.TextColored(Graufarbe, "Full name and world, for example:");
         ImGui.TextColored(Graufarbe, "Stella Unibell@Shiva");
-
-        // Was EnCounter zuletzt tatsaechlich erkannt hat. Ohne diese Zeile raet man
-        // beim Eintragen - ein Eintrag, der nicht greift, sieht aus wie einer, der
-        // greift.
-        var gesehen = zuletztGesehen();
-
-        if (!string.IsNullOrEmpty(gesehen))
-        {
-            ImGui.Spacing();
-            ImGui.TextColored(Graufarbe, "Last recognised:");
-            ImGui.SameLine();
-            ImGui.TextColored(Hinweisfarbe, gesehen);
-
-            if (!gesehen.Contains("(no world)") &&
-                !regel.OnlyFrom.Contains(gesehen, StringComparer.CurrentCultureIgnoreCase))
-            {
-                ImGui.SameLine();
-
-                if (ImGui.Button("Add##gesehen"))
-                {
-                    regel.OnlyFrom.Add(gesehen);
-                    save();
-                }
-            }
-        }
 
         ImGui.Spacing();
 
