@@ -240,9 +240,19 @@ public sealed class Plugin : IDalamudPlugin
         var ausgehend = urheber == eigene;
         var andere = ausgehend ? ziel : urheber;
 
+        // Dasselbe Emote kommt je nach Groesse des Gegenuebers unter verschiedenen
+        // Nummern an - siehe EmoteVariants. Ohne diese Ruecksetzung zaehlt eine Regel
+        // bei manchen Personen und bei anderen nicht.
+        var roh = emoteId;
+        emoteId = EmoteVariants.Normalise(Data, emoteId);
+
         if (diagnose)
-            Melde($"emote {emoteId}: von {urheber}, an {ziel}, ich bin {eigene} " +
+        {
+            var variante = roh != emoteId ? $" (Variante von {emoteId})" : string.Empty;
+
+            Melde($"emote {roh}{variante}: von {urheber}, an {ziel}, ich bin {eigene} " +
                   $"({(ausgehend ? "ausgehend" : "empfangen")})");
+        }
 
         if (andere == 0 || andere == eigene)
         {

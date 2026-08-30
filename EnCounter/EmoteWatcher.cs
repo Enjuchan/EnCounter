@@ -69,25 +69,36 @@ public sealed unsafe class EmoteWatcher : IDisposable
         uint arg5, uint arg6, uint arg7, uint arg8,
         ulong targetId, byte isRecorded)
     {
+        // **Die Kategorie zuerst.** Ueber diese Funktion laeuft weit mehr als Emotes -
+        // Buffs, Schaden, Zielwechsel, Tod. In einer vollen Stadt sind das viele Pakete
+        // je Sekunde, und fuer alle ausser Emotes bleibt es bei diesem einen Vergleich.
+        //
+        // Vorher wurde erst der Spielerzustand gelesen und die Ziel-Kennung maskiert -
+        // und danach gefragt, ob es ueberhaupt ein Emote war.
+        if (category != EmoteCategory)
+        {
+            hook.Original(entityId, category,
+                          arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8,
+                          targetId, isRecorded);
+
+            return;
+        }
+
         try
         {
-            var eigene = Plugin.PlayerState.IsLoaded ? Plugin.PlayerState.EntityId : 0u;
             var ziel = AlsEntityId(targetId);
-            var betrifftUns = eigene != 0 && (entityId == eigene || ziel == eigene);
 
-            // Zuerst wird ueberhaupt gemessen: Die ersten Pakete gehen ungefiltert ins
-            // Log, damit erkennbar ist, ob der Hook feuert und wie die Werte aussehen.
-            if (Diagnostics && category == EmoteCategory && betrifftUns)
+            if (Diagnostics)
             {
+                var eigene = Plugin.PlayerState.IsLoaded ? Plugin.PlayerState.EntityId : 0u;
+
                 Plugin.Log.Information(
                     $"[EnCounter/ActorControl] cat={category} ent={entityId} " +
                     $"tgtRoh={targetId} tgt={ziel} " +
-                    $"args=[{arg1},{arg2},{arg3},{arg4},{arg5},{arg6}] " +
-                    $"eigene={eigene} {(betrifftUns ? "BETRIFFT UNS" : "")}");
+                    $"args=[{arg1},{arg2},{arg3},{arg4},{arg5},{arg6}] eigene={eigene}");
             }
 
-            if (category == EmoteCategory)
-                OnEmote?.Invoke(entityId, ziel, arg1);
+            OnEmote?.Invoke(entityId, ziel, arg1);
         }
         catch (Exception e)
         {
