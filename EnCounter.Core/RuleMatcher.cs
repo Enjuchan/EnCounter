@@ -91,19 +91,30 @@ public static class RuleMatcher
     ///
     /// Unvollständige Einträge treffen deshalb nie. Die Oberfläche kennzeichnet sie.
     /// </summary>
-    private static bool IstDieselbePerson(string eingetragen, IncomingEvent e)
+    private static bool IstDieselbePerson(string eingetragen, IncomingEvent e) =>
+        Matches(eingetragen, e.SenderName, e.SenderWorld);
+
+    /// <summary>
+    /// Ob ein Eintrag aus <see cref="Rule.OnlyFrom"/> diese Person meint.
+    ///
+    /// Oeffentlich, weil nicht nur die Regelpruefung das braucht: Die Oberflaeche
+    /// summiert damit den Stand einer Regel, die nur fuer bestimmte Personen gilt.
+    /// Ohne das zeigte sie dort den Stand **aller** - der Zaehler haengt am Ereignis
+    /// und wird geteilt.
+    /// </summary>
+    public static bool Matches(string? eingetragen, string name, string welt)
     {
         if (!IstVollstaendig(eingetragen))
             return false;
 
-        var eintrag = eingetragen.Trim();
+        var eintrag = eingetragen!.Trim();
         var at = eintrag.IndexOf('@');
 
-        var name = eintrag[..at].Trim();
-        var welt = eintrag[(at + 1)..].Trim();
+        var eintragName = eintrag[..at].Trim();
+        var eintragWelt = eintrag[(at + 1)..].Trim();
 
-        return string.Equals(name, e.SenderName, StringComparison.CurrentCultureIgnoreCase) &&
-               string.Equals(welt, e.SenderWorld, StringComparison.CurrentCultureIgnoreCase);
+        return string.Equals(eintragName, name, StringComparison.CurrentCultureIgnoreCase) &&
+               string.Equals(eintragWelt, welt, StringComparison.CurrentCultureIgnoreCase);
     }
 
     /// <summary>

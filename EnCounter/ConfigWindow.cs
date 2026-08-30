@@ -148,6 +148,40 @@ public sealed class ConfigWindow(
         ausgewaehlt >= 0 && ausgewaehlt < config.Rules.Count ? config.Rules[ausgewaehlt] : null;
 
     /// <summary>
+    /// Was diese Regel gezählt hat — beide Richtungen zusammen.
+    ///
+    /// **Bei einer Regel mit Namensliste zählen nur die genannten Personen.** Der
+    /// Zähler hängt am Ereignis und wird mit jeder Regel geteilt, die dasselbe
+    /// abdeckt; die schlichte Summe zeigte deshalb bei einer Regel „nur für X" den
+    /// Stand aller. Gemeldet von einer Nutzerin, die genau das gebaut hatte.
+    /// </summary>
+    private int StandDerRegel(Rule regel)
+    {
+        var summe = 0;
+
+        foreach (var outgoing in new[] { false, true })
+        {
+            var auswahl = CounterScope.ForRule(regel, outgoing);
+
+            if (regel.OnlyFrom.Count == 0)
+            {
+                summe += counters.GetTotal(auswahl);
+                continue;
+            }
+
+            foreach (var (person, anzahl) in counters.GetAll(auswahl))
+            {
+                var welt = WorldCatalog.NameOf(data, person.WorldId);
+
+                if (regel.OnlyFrom.Any(e => RuleMatcher.Matches(e, person.Name, welt)))
+                    summe += anzahl;
+            }
+        }
+
+        return summe;
+    }
+
+    /// <summary>
     /// Regel nach oben oder unten schieben.
     ///
     /// Nötig, weil bei **gleich genauen** Regeln die Reihenfolge entscheidet, welche
@@ -221,10 +255,8 @@ public sealed class ConfigWindow(
             // Zaehler und Art stehen klein darunter statt in Klammern dahinter - so
             // bleibt der Name lesbar, auch wenn er lang ist.
             var art = IstEmoteRegel(regel) ? "emotes" : "chat";
-            var gesamt = counters.GetTotal(CounterScope.ForRule(regel, false))
-                       + counters.GetTotal(CounterScope.ForRule(regel, true));
 
-            ImGui.TextColored(Graufarbe, $"      {gesamt} counted · {art}");
+            ImGui.TextColored(Graufarbe, $"      {StandDerRegel(regel)} counted · {art}");
         }
 
         ImGui.Separator();
