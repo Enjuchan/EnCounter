@@ -38,6 +38,17 @@ public sealed class Plugin : IDalamudPlugin
     private DateTime naechstesSpeichern = DateTime.MinValue;
     private static readonly TimeSpan Speicherabstand = TimeSpan.FromSeconds(2);
 
+    /// <summary>
+    /// Schreibt jeden Schritt der Emote-Verarbeitung in Log und Chat.
+    ///
+    /// Fuer den Fall, dass ein Emote bei einer bestimmten Person nicht zaehlt und bei
+    /// anderen schon: Nur so ist zu sehen, ob das Paket ankommt, welche Ziel-Kennung
+    /// darin steht, ob die Objekttabelle sie aufloest und welche Regel greift.
+    ///
+    /// Bewusst nicht dauerhaft an - im Gebrauch waere es Laerm.
+    /// </summary>
+    private bool diagnose;
+
 
     public Plugin()
     {
@@ -84,9 +95,9 @@ public sealed class Plugin : IDalamudPlugin
         PluginInterface.UiBuilder.OpenConfigUi += Oeffnen;
         PluginInterface.UiBuilder.OpenMainUi += Oeffnen;
 
-        Commands.AddHandler("/encounter", new Dalamud.Game.Command.CommandInfo((_, _) => Oeffnen())
+        Commands.AddHandler("/encounter", new Dalamud.Game.Command.CommandInfo(AufBefehl)
         {
-            HelpMessage = "Opens the EnCounter settings.",
+            HelpMessage = "Opens the EnCounter settings. /encounter debug logs how emotes are processed.",
         });
 
         Framework.Update += Tick;
@@ -119,6 +130,14 @@ public sealed class Plugin : IDalamudPlugin
             return;
 
         var passende = config.Rules.Where(r => RuleMatcher.Matches(r, e, eigenerName)).ToList();
+
+        if (diagnose)
+        {
+            Melde(passende.Count == 0
+                ? "  keine Regel passt"
+                : $"  passende Regeln: {string.Join(", ", passende.Select(r => r.Name))}");
+        }
+
         if (passende.Count == 0)
             return;
 
@@ -145,12 +164,20 @@ public sealed class Plugin : IDalamudPlugin
                 .Min(r => r.CooldownSeconds);
 
             if (!cooldowns.Allow(s, person, sperre, jetzt))
+            {
+                if (diagnose)
+                    Melde($"  {s} gebremst: dieselbe Person zaehlt erst nach {sperre}s wieder");
+
                 continue;
+            }
 
             // Staende aus der Zeit, als nur der Vorname gespeichert wurde.
             counters.MergeShortName(s, person);
-            counters.Increment(s, person);
+            var stand = counters.Increment(s, person);
             gezaehlt.Add(s);
+
+            if (diagnose)
+                Melde($"  gezaehlt unter {s}: {person.Name} steht jetzt bei {stand}");
         }
 
         if (gezaehlt.Count == 0)
@@ -213,16 +240,41 @@ public sealed class Plugin : IDalamudPlugin
         var ausgehend = urheber == eigene;
         var andere = ausgehend ? ziel : urheber;
 
+        if (diagnose)
+            Melde($"emote {emoteId}: von {urheber}, an {ziel}, ich bin {eigene} " +
+                  $"({(ausgehend ? "ausgehend" : "empfangen")})");
+
         if (andere == 0 || andere == eigene)
+        {
+            if (diagnose)
+                Melde(andere == 0
+                    ? "  verworfen: kein Gegenueber - das Emote war auf niemanden gerichtet"
+                    : "  verworfen: Gegenueber bin ich selbst");
+
             return;
+        }
 
         // Fremde Emotes auf Dritte gehen uns nichts an.
         if (!ausgehend && ziel != eigene)
+        {
+            if (diagnose)
+                Melde("  verworfen: galt jemand anderem");
+
             return;
+        }
 
         var (name, welt) = Spieler(andere);
+
         if (string.IsNullOrEmpty(name))
+        {
+            if (diagnose)
+                Melde($"  verworfen: Kennung {andere} ist in der Objekttabelle nicht zu finden");
+
             return;
+        }
+
+        if (diagnose)
+            Melde($"  erkannt als {name}@{WorldCatalog.NameOf(Data, welt)}");
 
         Handle(new IncomingEvent(
             SenderName: name,
@@ -274,6 +326,28 @@ public sealed class Plugin : IDalamudPlugin
     }
 
     private void Oeffnen() => window.Visible = !window.Visible;
+
+    private void AufBefehl(string _, string argumente)
+    {
+        if (!argumente.Trim().Equals("debug", StringComparison.OrdinalIgnoreCase))
+        {
+            Oeffnen();
+            return;
+        }
+
+        diagnose = !diagnose;
+
+        Chat.Print(diagnose
+            ? "[EnCounter] Diagnostics on. Every emote is logged until you turn it off."
+            : "[EnCounter] Diagnostics off.");
+    }
+
+    /// <summary>Eine Zeile Diagnose, in Log und Chat.</summary>
+    private void Melde(string text)
+    {
+        Log.Information($"[EnCounter/diag] {text}");
+        Chat.Print($"[EnCounter] {text}");
+    }
 
     private void Tick(IFramework _)
     {
