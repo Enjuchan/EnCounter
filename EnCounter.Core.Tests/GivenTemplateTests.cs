@@ -83,4 +83,50 @@ public class GivenTemplateTests
         Assert.Equal("hugged others 9x",
             TitleTemplate.Build(regel, "Wilhelmina", 3, 9, outgoing: true));
     }
+
+    // --- nur eine Richtung ----------------------------------------------------
+
+    /// <summary>
+    /// Der gemeldete Fall: Eine Both-Regel wird dupliziert, das Duplikat auf eine
+    /// Richtung gestellt. Die Gegenvorlage kommt beim Kopieren mit, ist in der
+    /// Oberflaeche aber nicht mehr zu sehen - sie darf deshalb auch nicht mehr
+    /// benutzt werden. Sonst aendert man einen Text, der nicht gelesen wird.
+    /// </summary>
+    [Fact]
+    public void Bei_nur_Given_gilt_die_normale_Vorlage()
+    {
+        var regel = Regel();
+        regel.Direction = CountDirection.Given;
+        regel.PersonalTemplate = "das hier soll erscheinen";
+
+        Assert.Equal("das hier soll erscheinen",
+            TitleTemplate.Build(regel, "Enju", 3, 9, outgoing: true));
+    }
+
+    [Fact]
+    public void Bei_nur_Received_ebenso()
+    {
+        var regel = Regel();
+        regel.Direction = CountDirection.Received;
+        regel.PersonalTemplate = "das hier soll erscheinen";
+
+        Assert.Equal("das hier soll erscheinen",
+            TitleTemplate.Build(regel, "Enju", 3, 9, outgoing: false));
+    }
+
+    /// <summary>
+    /// Die Gegenvorlage bleibt gespeichert - wer zurueck auf "beides" stellt, hat sie
+    /// wieder. Weggeworfen wird nichts.
+    /// </summary>
+    [Fact]
+    public void Zurueck_auf_Both_bringt_die_Gegenvorlage_wieder()
+    {
+        var regel = Regel();
+
+        regel.Direction = CountDirection.Given;
+        Assert.Equal("Enju hugged me 3x", TitleTemplate.Build(regel, "Enju", 3, 9, outgoing: true));
+
+        regel.Direction = CountDirection.Both;
+        Assert.Equal("hugged Enju 3x", TitleTemplate.Build(regel, "Enju", 3, 9, outgoing: true));
+    }
 }

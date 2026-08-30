@@ -136,13 +136,22 @@ public static partial class TitleTemplate
     /// <summary>
     /// Welche Vorlagen gelten - die normalen oder die für die Gegenrichtung.
     ///
-    /// Eine leere Gegenvorlage fällt auf die normale zurück. Damit bleiben Regeln aus
-    /// älteren Fassungen unverändert gültig, und wer nur eine Richtung zählt, muss
-    /// nichts doppelt pflegen.
+    /// **Die Gegenvorlagen gelten nur bei <see cref="CountDirection.Both"/>.** Nur dort
+    /// fallen beide Richtungen in eine Regel und brauchen zwei Texte. Zählt eine Regel
+    /// nur eine Richtung, ist die normale Vorlage dafür da - und genau die zeigt die
+    /// Oberfläche dann auch an.
+    ///
+    /// Ohne diese Einschränkung entstand ein unsichtbarer Rest: Wer eine Both-Regel
+    /// dupliziert und das Duplikat auf eine Richtung stellt, sieht die normalen Felder,
+    /// während die mitkopierte Gegenvorlage weiterbenutzt wird. Man ändert dann einen
+    /// Text, der gar nicht gelesen wird. Am 30.08.2026 genau so gemeldet.
+    ///
+    /// Eine leere Gegenvorlage fällt weiterhin auf die normale zurück, damit niemand
+    /// zwei Texte pflegen muss, der nur einen will.
     /// </summary>
     public static (string WithName, string WithoutName) VorlagenFuer(Rule rule, bool outgoing)
     {
-        if (!outgoing)
+        if (!outgoing || rule.Direction != CountDirection.Both)
             return (rule.PersonalTemplate, rule.GeneralTemplate);
 
         var mitNamen = string.IsNullOrWhiteSpace(rule.GivenPersonalTemplate)
