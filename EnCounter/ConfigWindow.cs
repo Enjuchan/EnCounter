@@ -148,37 +148,72 @@ public sealed class ConfigWindow(
         ausgewaehlt >= 0 && ausgewaehlt < config.Rules.Count ? config.Rules[ausgewaehlt] : null;
 
     /// <summary>
-    /// Was diese Regel gezählt hat — beide Richtungen zusammen.
+    /// Ob eine Regel diese Richtung überhaupt zählt.
+    ///
+    /// Chatregeln kennen keine Richtung — dort gibt es keinen verlässlichen Empfänger,
+    /// gezählt wird immer als empfangen.
+    /// </summary>
+    private static bool ZaehltRichtung(Rule regel, bool outgoing)
+    {
+        if (!IstEmoteRegel(regel))
+            return !outgoing;
+
+        return regel.Direction switch
+        {
+            CountDirection.Received => !outgoing,
+            CountDirection.Given => outgoing,
+            _ => true,
+        };
+    }
+
+    /// <summary>
+    /// Was diese Regel in einer Richtung gezählt hat.
     ///
     /// **Bei einer Regel mit Namensliste zählen nur die genannten Personen.** Der
     /// Zähler hängt am Ereignis und wird mit jeder Regel geteilt, die dasselbe
     /// abdeckt; die schlichte Summe zeigte deshalb bei einer Regel „nur für X" den
-    /// Stand aller. Gemeldet von einer Nutzerin, die genau das gebaut hatte.
+    /// Stand aller.
     /// </summary>
-    private int StandDerRegel(Rule regel)
+    private int StandDerRegel(Rule regel, bool outgoing)
     {
+        var auswahl = CounterScope.ForRule(regel, outgoing);
+
+        if (regel.OnlyFrom.Count == 0)
+            return counters.GetTotal(auswahl);
+
         var summe = 0;
 
-        foreach (var outgoing in new[] { false, true })
+        foreach (var (person, anzahl) in counters.GetAll(auswahl))
         {
-            var auswahl = CounterScope.ForRule(regel, outgoing);
+            var welt = WorldCatalog.NameOf(data, person.WorldId);
 
-            if (regel.OnlyFrom.Count == 0)
-            {
-                summe += counters.GetTotal(auswahl);
-                continue;
-            }
-
-            foreach (var (person, anzahl) in counters.GetAll(auswahl))
-            {
-                var welt = WorldCatalog.NameOf(data, person.WorldId);
-
-                if (regel.OnlyFrom.Any(e => RuleMatcher.Matches(e, person.Name, welt)))
-                    summe += anzahl;
-            }
+            if (regel.OnlyFrom.Any(e => RuleMatcher.Matches(e, person.Name, welt)))
+                summe += anzahl;
         }
 
         return summe;
+    }
+
+    /// <summary>
+    /// Die Zeile unter dem Regelnamen.
+    ///
+    /// **Zeigt nur, was die Regel auch zählt.** Eine reine „ich emote sie"-Regel darf
+    /// nicht das Empfangene mit ausweisen — sie hat es nie gezählt, und der geteilte
+    /// Zähler enthält es trotzdem.
+    /// </summary>
+    private string Standzeile(Rule regel)
+    {
+        var empfangen = ZaehltRichtung(regel, false) ? StandDerRegel(regel, false) : -1;
+        var gegeben = ZaehltRichtung(regel, true) ? StandDerRegel(regel, true) : -1;
+
+        // Chat kennt keine Richtung - dort wäre „received" nur Ballast.
+        if (!IstEmoteRegel(regel))
+            return $"{empfangen} counted · chat";
+
+        if (empfangen >= 0 && gegeben >= 0)
+            return $"{empfangen} received · {gegeben} given";
+
+        return empfangen >= 0 ? $"{empfangen} received" : $"{gegeben} given";
     }
 
     /// <summary>
@@ -254,9 +289,7 @@ public sealed class ConfigWindow(
 
             // Zaehler und Art stehen klein darunter statt in Klammern dahinter - so
             // bleibt der Name lesbar, auch wenn er lang ist.
-            var art = IstEmoteRegel(regel) ? "emotes" : "chat";
-
-            ImGui.TextColored(Graufarbe, $"      {StandDerRegel(regel)} counted · {art}");
+            ImGui.TextColored(Graufarbe, $"      {Standzeile(regel)}");
         }
 
         ImGui.Separator();
@@ -1250,35 +1283,50 @@ public sealed class ConfigWindow(
             return;
         }
 
-        ImGui.BeginChild("globalzaehler", new(0, 0));
+        var empfangen = PersonenListe(gegeben: false);
+        var gegeben = PersonenListe(gegeben: true);
 
-        DrawUeberschrift("Totals");
-        ImGui.TextColored(Graufarbe, "Every event, both directions at a glance.");
-        ImGui.Spacing();
-        DrawGesamtzahlen();
+        // Unterreiter statt einklappbarer Balken: Die Personen darunter sind selbst
+        // Klappbalken, und drei gleich aussehende Ebenen uebereinander lassen sich
+        // nicht auseinanderhalten. Reiter trennen eindeutig - und man springt hin,
+        // statt an einer langen Liste vorbeizuscrollen.
+        if (!ImGui.BeginTabBar("zaehlerbereiche"))
+            return;
 
-        ImGui.Spacing();
-        DrawUeberschrift("Received  —  per person");
-        DrawPersonenliste(gegeben: false);
+        if (ImGui.BeginTabItem("Totals###totals"))
+        {
+            ImGui.Spacing();
+            ImGui.TextColored(Graufarbe, "Every event, both directions at a glance.");
+            ImGui.Spacing();
 
-        ImGui.Spacing();
-        DrawUeberschrift("Given  —  per person");
-        DrawPersonenliste(gegeben: true);
+            ImGui.BeginChild("gesamt", new(0, 0));
+            DrawGesamtzahlen();
+            ImGui.EndChild();
 
-        ImGui.EndChild();
-    }
+            ImGui.EndTabItem();
+        }
 
-    /// <summary>
-    /// Deutlich abgesetzte Abschnittsüberschrift. `SeparatorText` gibt es in diesen
-    /// Bindings nicht, also Linie und Text von Hand.
-    /// </summary>
-    private static void DrawUeberschrift(string text)
-    {
-        ImGui.Spacing();
-        ImGui.Separator();
-        ImGui.TextUnformatted(text);
-        ImGui.Separator();
-        ImGui.Spacing();
+        if (ImGui.BeginTabItem($"Received  ({empfangen.Count})###recv"))
+        {
+            ImGui.Spacing();
+            ImGui.BeginChild("recvliste", new(0, 0));
+            DrawPersonen(empfangen, gegeben: false);
+            ImGui.EndChild();
+
+            ImGui.EndTabItem();
+        }
+
+        if (ImGui.BeginTabItem($"Given  ({gegeben.Count})###giv"))
+        {
+            ImGui.Spacing();
+            ImGui.BeginChild("givliste", new(0, 0));
+            DrawPersonen(gegeben, gegeben: true);
+            ImGui.EndChild();
+
+            ImGui.EndTabItem();
+        }
+
+        ImGui.EndTabBar();
     }
 
     /// <summary>Ein Ereignis je Zeile, empfangen und gegeben nebeneinander.</summary>
@@ -1345,7 +1393,14 @@ public sealed class ConfigWindow(
     /// Wer wie oft - über alle Ereignisse einer Richtung zusammengefasst, aufklappbar
     /// bis auf das einzelne Emote.
     /// </summary>
-    private void DrawPersonenliste(bool gegeben)
+    /// <summary>
+    /// Wer in dieser Richtung gezählt wurde, mit den Ereignissen dahinter — die
+    /// höchsten Stände zuerst.
+    ///
+    /// Getrennt vom Zeichnen, weil die Anzahl schon für die Überschrift gebraucht
+    /// wird, bevor überhaupt feststeht, ob der Bereich aufgeklappt ist.
+    /// </summary>
+    private List<(CounterKey Person, List<(string Basis, int Anzahl)> Eintraege)> PersonenListe(bool gegeben)
     {
         var proPerson = new Dictionary<CounterKey, List<(string Basis, int Anzahl)>>();
 
@@ -1366,7 +1421,16 @@ public sealed class ConfigWindow(
             }
         }
 
-        if (proPerson.Count == 0)
+        return [.. proPerson
+            .OrderByDescending(p => p.Value.Sum(e => e.Anzahl))
+            .Select(p => (p.Key, p.Value))];
+    }
+
+    private void DrawPersonen(
+        List<(CounterKey Person, List<(string Basis, int Anzahl)> Eintraege)> personen,
+        bool gegeben)
+    {
+        if (personen.Count == 0)
         {
             ImGui.TextColored(Graufarbe, gegeben
                 ? "You have not emoted anyone yet."
@@ -1377,7 +1441,7 @@ public sealed class ConfigWindow(
 
         var kuerzel = gegeben ? "g" : "r";
 
-        foreach (var (person, eintraege) in proPerson.OrderByDescending(p => p.Value.Sum(e => e.Anzahl)))
+        foreach (var (person, eintraege) in personen)
         {
             var welt = WorldCatalog.NameOf(data, person.WorldId);
             var wo = string.IsNullOrEmpty(welt) ? string.Empty : $" @ {welt}";
