@@ -13,9 +13,15 @@ public sealed class TitlePresenter(HonorificBridge honorific)
 
     public bool IsShowing => DateTime.UtcNow < endsAt;
 
+    /// <summary>Text des zuletzt gesetzten Titels; gilt nur, solange <see cref="IsShowing"/>.</summary>
+    public string CurrentText { get; private set; } = string.Empty;
+
+    public TimeSpan Remaining => IsShowing ? endsAt - DateTime.UtcNow : TimeSpan.Zero;
+
     public void Show(string text, EnCounter.Core.Rule regel)
     {
         honorific.SetTitle(text, regel);
+        CurrentText = text;
         endsAt = DateTime.UtcNow.AddSeconds(Math.Max(1, regel.DisplaySeconds));
     }
 

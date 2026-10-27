@@ -17,6 +17,7 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static ICommandManager Commands { get; private set; } = null!;
     [PluginService] internal static IDataManager Data { get; private set; } = null!;
     [PluginService] internal static ITargetManager Targets { get; private set; } = null!;
+    [PluginService] internal static ITextureProvider Textures { get; private set; } = null!;
 
     private readonly Configuration config;
     private readonly CounterStore counters;
@@ -26,6 +27,9 @@ public sealed class Plugin : IDalamudPlugin
     private readonly EmoteWatcher emotes;
     private readonly TitlePresenter presenter;
     private readonly ConfigWindow window;
+
+    /// <summary>Das zuletzt gezählte Ereignis; null, bis etwas gezählt wurde.</summary>
+    private LastEvent? letztes;
 
     /// <summary>
     /// Es liegt etwas an, das noch nicht auf der Platte steht.
@@ -81,10 +85,17 @@ public sealed class Plugin : IDalamudPlugin
         var konfigOrdner = PluginInterface.ConfigFile.Directory?.FullName ?? string.Empty;
 
         // Die ContentId trennt die eigenen Charaktere - PatMe fuehrt seine Staende so.
+        Ui.Widgets.Init(Textures);
         window = new ConfigWindow(config, counters, cooldowns, Data, konfigOrdner,
                                   () => PlayerState.IsLoaded ? PlayerState.ContentId : 0ul,
                                   AktuellesZiel,
-                                  MerkeAenderung);
+                                  MerkeAenderung,
+                                  () => letztes,
+                                  () => diagnose,
+                                  SetzeDiagnose,
+                                  honorific,
+                                  presenter,
+                                  PluginInterface.Manifest.AssemblyVersion.ToString(3));
 
         PluginInterface.UiBuilder.Draw += window.Draw;
 
@@ -124,6 +135,14 @@ public sealed class Plugin : IDalamudPlugin
         // IPlayerState und ist dort schon eine Zeichenkette.
         if (!PlayerState.IsLoaded)
             return;
+
+        if (config.Paused)
+        {
+            if (diagnose)
+                Melde("  verworfen: Pause ist an");
+
+            return;
+        }
 
         var eigenerName = Vorname(PlayerState.CharacterName);
         if (string.IsNullOrEmpty(eigenerName))
@@ -197,13 +216,24 @@ public sealed class Plugin : IDalamudPlugin
 
         var auswahl = CounterScope.ForRule(zeigende, e.Outgoing);
 
+        var personalStand = counters.GetPersonal(auswahl, person);
+
+        letztes = new LastEvent(
+            Person: string.IsNullOrEmpty(e.SenderWorld) ? e.SenderName : $"{e.SenderName}@{e.SenderWorld}",
+            EventName: IstEmote(e.Channel) ? EmoteCatalog.NameOf(Data, e.EmoteId) : $"Chat ({e.Channel})",
+            Count: personalStand,
+            RuleName: zeigende.Name,
+            Time: jetzt);
+
         presenter.Show(
-            TitleTemplate.Build(zeigende, e.SenderName,
-                                counters.GetPersonal(auswahl, person),
+            TitleTemplate.Build(zeigende, e.SenderName, personalStand,
                                 counters.GetTotal(auswahl),
                                 e.Outgoing),
             zeigende);
     }
+
+    private static bool IstEmote(ChatChannel kanal) =>
+        kanal is ChatChannel.StandardEmote or ChatChannel.CustomEmote;
 
     /// <summary>Es hat sich etwas geändert; geschrieben wird im nächsten Puls.</summary>
     private void MerkeAenderung() => ungespeichert = true;
@@ -345,7 +375,13 @@ public sealed class Plugin : IDalamudPlugin
             return;
         }
 
-        diagnose = !diagnose;
+        SetzeDiagnose(!diagnose);
+    }
+
+    /// <summary>Gemeinsamer Weg für Befehl und Oberfläche, damit beide dieselbe Meldung auslösen.</summary>
+    private void SetzeDiagnose(bool an)
+    {
+        diagnose = an;
 
         Chat.Print(diagnose
             ? "[EnCounter] Diagnostics on. Every emote is logged until you turn it off."

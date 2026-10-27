@@ -24,6 +24,13 @@ public sealed class Configuration : IPluginConfiguration
 
     public List<Rule> Rules { get; set; } = [];
 
+    /// <summary>
+    /// Pause: Solange sie gesetzt ist, wird weder gezählt noch ein Titel gezeigt.
+    /// Fehlt das Feld in einer älteren Datei, bleibt es aus - eine neue Fassung
+    /// ist dafür nicht nötig.
+    /// </summary>
+    public bool Paused { get; set; }
+
     public List<CounterEntry> Counters { get; set; } = [];
 
     public sealed class CounterEntry

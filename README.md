@@ -28,6 +28,22 @@ to Honorific, which already knows how to render it and, more importantly, how to
 to other players through sync plugins. Without Honorific nothing appears, and EnCounter
 will say so on startup instead of staying silent.
 
+## The window
+
+`/encounter` opens it. The header shows whether Honorific is loaded, the title that is
+showing right now with its time left, and whether counting is paused. Below it you see the
+last thing that was counted.
+
+- **Rules**: your rules as cards with an on/off switch and their count. A warning sign
+  marks a rule that can never count or never show its title; hover it for the reason.
+  Pick a rule to edit it. A live preview at the top shows the title with an example name
+  and count in your colours, and the editor is split into *Trigger* (what counts and from
+  whom), *Title* (templates, how long and where it shows) and *Look* (colours, glow,
+  gradient and a few presets).
+- **Counts**: totals per event, everyone who has emoted you and everyone you have emoted,
+  with a search.
+- **Settings**: pause counting, diagnostics and the import from PatMe.
+
 ## How it works
 
 **Emotes** are read from the game's packet handling, not from the chat log. That matters:
@@ -50,9 +66,9 @@ ever counted once.
 
 Deleting a rule leaves its counts alone. They were never its property.
 
-The **Counts** tab has three parts: totals per event with both directions side by side,
-then everyone who has emoted you, then everyone you have emoted. Each person opens up
-to show which emotes make up their number. Resetting there affects every rule that
+The **Counts** tab has three views: totals per event with both directions side by side,
+everyone who has emoted you, and everyone you have emoted, all searchable. Each person
+opens up to show which emotes make up their number. Resetting there affects every rule that
 counts the same thing — which is the point, and why it says so.
 
 **Counts are per person and permanent.** A rule can show either how often *this* person
@@ -66,8 +82,8 @@ only unique per world, so anything less would quietly count strangers too.
 **A rule that names people wins the message** over a general one covering the same
 thing. That is how you give one person their own text: duplicate the rule, add the
 name, change the wording. Both still count; only the more specific one speaks. Where
-two rules are equally specific, the upper one wins, and *Up* / *Down* let you decide
-which that is.
+two rules are equally specific, the upper one wins, and the arrows next to the rule name
+let you decide which that is.
 
 **Both directions.** An emote rule counts what others aim at you, what you aim at
 others, or both. The counter always belongs to the *other* person — a tally on your own
@@ -90,7 +106,7 @@ flags a template that contains control characters and offers to clean it up.
 
 ## Coming from PatMe
 
-*Import...* in the rule list takes counts from **PatMe** and **PatMe Honorific** into
+*Import from PatMe* in the Settings tab takes counts from **PatMe** and **PatMe Honorific** into
 the shared list. It creates no rules — what you make of those numbers is yours to
 decide. Nothing changes until you confirm, and importing twice replaces the entry
 rather than adding it up again.
@@ -102,7 +118,7 @@ EnCounter counts for whoever is logged in.
 
 The two sources overlap: PatMe counts by emote *name* and has no notion of direction,
 while PatMe Honorific counts by emote number and direction but only since it was
-switched on. Where they disagree, **the higher number wins**, and the dialog shows what
+switched on. Where they disagree, **the higher number wins**, and the import card shows what
 each source said. Adding them would double every emote both plugins saw; the file has
 no timestamps to do better. The lower guess invents nothing.
 
@@ -124,7 +140,9 @@ plugin's configuration file.
 
 ## Settings
 
-`/encounter` or the cog in Dalamud's plugin list.
+`/encounter` or the cog in Dalamud's plugin list. *Pause counting* in the Settings tab stops
+counting and titles without touching your rules. *Diagnostics*, also available as
+`/encounter debug`, writes each step of emote and rule processing to the log and chat.
 
 ## Building
 

@@ -4,7 +4,7 @@ using Lumina.Excel.Sheets;
 namespace EnCounter;
 
 /// <summary>Ein Emote, so weit es für die Auswahlliste gebraucht wird.</summary>
-public sealed record EmoteEntry(uint Id, string Name, string Command);
+public sealed record EmoteEntry(uint Id, string Name, string Command, uint Icon);
 
 /// <summary>
 /// Die Emotes aus den Spieldaten, damit sich in der Oberfläche Namen auswählen lassen
@@ -40,7 +40,7 @@ public static class EmoteCatalog
             if (string.IsNullOrWhiteSpace(befehl))
                 continue;
 
-            liste.Add(new EmoteEntry(emote.RowId, name, befehl));
+            liste.Add(new EmoteEntry(emote.RowId, name, befehl, emote.Icon));
         }
 
         liste.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.CurrentCulture));

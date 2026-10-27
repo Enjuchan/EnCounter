@@ -133,6 +133,19 @@ public static partial class TitleTemplate
         return Clean(Render(ohneNamen, null, total));
     }
 
+    public const string ExampleName = "Stella Unibell";
+    public const int ExamplePersonalCount = 7;
+    public const int ExampleTotalCount = 42;
+
+    /// <summary>
+    /// Der Titel, wie er für diese Regel erschiene, mit Beispielname und -zahlen.
+    /// Geht durch <see cref="Build"/>, zeigt also auch den Rückfall auf die Vorlage
+    /// ohne Namen. Bei <see cref="CountDirection.Both"/> liefert
+    /// <paramref name="outgoing"/> die Gegenrichtung.
+    /// </summary>
+    public static string Preview(Rule rule, bool outgoing = false) =>
+        Build(rule, ExampleName, ExamplePersonalCount, ExampleTotalCount, outgoing);
+
     /// <summary>
     /// Welche Vorlagen gelten - die normalen oder die für die Gegenrichtung.
     ///
