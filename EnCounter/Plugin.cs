@@ -1,4 +1,5 @@
 using Dalamud.Game.ClientState.Conditions;
+using Dalamud.Interface.Windowing;
 using Dalamud.IoC;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
@@ -28,7 +29,10 @@ public sealed class Plugin : IDalamudPlugin
     private readonly ChatWatcher watcher;
     private readonly EmoteWatcher emotes;
     private readonly TitlePresenter presenter;
+    private const string Command = "/encounter";
+
     private readonly ConfigWindow window;
+    private readonly WindowSystem windows = new("EnCounter");
 
     /// <summary>Das zuletzt gezählte Ereignis; null, bis etwas gezählt wurde.</summary>
     private LastEvent? letztes;
@@ -62,6 +66,7 @@ public sealed class Plugin : IDalamudPlugin
         ECommons.ECommonsMain.Init(PluginInterface, this);
 
         config = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
+        Loc.Init(PluginInterface, config.Language);
 
         // Reihenfolge zaehlt: Erst Regeln anlegen, damit auch die frischen eine Id
         // bekommen, dann wandern, dann laden. Nach Migrate liegen alle Zaehler unter
@@ -105,6 +110,7 @@ public sealed class Plugin : IDalamudPlugin
                                   new Dependencies(PluginInterface, Log, EnCounterDependencies.Groups),
                                   EnCounterAbout.Create(version),
                                   Log);
+        windows.AddWindow(window);
 
         PluginInterface.UiBuilder.Draw += Draw;
 
@@ -115,10 +121,9 @@ public sealed class Plugin : IDalamudPlugin
         PluginInterface.UiBuilder.OpenConfigUi += Oeffnen;
         PluginInterface.UiBuilder.OpenMainUi += Oeffnen;
 
-        Commands.AddHandler("/encounter", new Dalamud.Game.Command.CommandInfo(AufBefehl)
-        {
-            HelpMessage = $"{EnCounterAbout.ToggleEffect} /encounter debug turns diagnostics on or off.",
-        });
+        // Dalamud übernimmt den Hilfetext bei der Anmeldung, deshalb wird der Befehl beim Sprachwechsel neu angemeldet.
+        RegisterCommand();
+        Loc.Changed += RegisterCommand;
 
         Framework.Update += Tick;
 
@@ -129,13 +134,23 @@ public sealed class Plugin : IDalamudPlugin
 
         if (!honorific.IsAvailable)
         {
-            Chat.PrintError($"[EnCounter] Honorific is required: {honorific.LastError}");
+            Chat.PrintError($"[EnCounter] {Loc.T($"Honorific is required: {honorific.LastError}", $"Honorific wird benötigt: {honorific.LastError}")}");
         }
         else
         {
             var namen = string.Join(", ", config.Rules.Where(r => r.Enabled).Select(r => r.Name));
             Log.Information($"EnCounter bereit. Aktive Regeln: {namen}");
         }
+    }
+
+    private void RegisterCommand()
+    {
+        Commands.RemoveHandler(Command);
+        Commands.AddHandler(Command, new Dalamud.Game.Command.CommandInfo(AufBefehl)
+        {
+            HelpMessage = $"{EnCounterAbout.ToggleEffect} " +
+                          Loc.T("/encounter debug turns diagnostics on or off.", "/encounter debug schaltet die Diagnose ein oder aus."),
+        });
     }
 
     private void Handle(IncomingEvent e)
@@ -148,7 +163,7 @@ public sealed class Plugin : IDalamudPlugin
         if (config.Paused)
         {
             if (diagnose)
-                Melde("  verworfen: Pause ist an");
+                Melde(new("  dropped: counting is paused", "  verworfen: Pause ist an"));
 
             return;
         }
@@ -161,9 +176,10 @@ public sealed class Plugin : IDalamudPlugin
 
         if (diagnose)
         {
+            var regelnamen = string.Join(", ", passende.Select(r => r.Name));
             Melde(passende.Count == 0
-                ? "  keine Regel passt"
-                : $"  passende Regeln: {string.Join(", ", passende.Select(r => r.Name))}");
+                ? new("  no rule matches", "  keine Regel passt")
+                : new($"  matching rules: {regelnamen}", $"  passende Regeln: {regelnamen}"));
         }
 
         if (passende.Count == 0)
@@ -194,7 +210,8 @@ public sealed class Plugin : IDalamudPlugin
             if (!cooldowns.Allow(s, person, sperre, jetzt))
             {
                 if (diagnose)
-                    Melde($"  {s} gebremst: dieselbe Person zaehlt erst nach {sperre}s wieder");
+                    Melde(new($"  {s} throttled: the same person counts again after {sperre}s",
+                              $"  {s} gebremst: dieselbe Person zählt erst nach {sperre} s wieder"));
 
                 continue;
             }
@@ -205,7 +222,8 @@ public sealed class Plugin : IDalamudPlugin
             gezaehlt.Add(s);
 
             if (diagnose)
-                Melde($"  gezaehlt unter {s}: {person.Name} steht jetzt bei {stand}");
+                Melde(new($"  counted under {s}: {person.Name} is now at {stand}",
+                          $"  gezählt unter {s}: {person.Name} steht jetzt bei {stand}"));
         }
 
         if (gezaehlt.Count == 0)
@@ -287,18 +305,20 @@ public sealed class Plugin : IDalamudPlugin
 
         if (diagnose)
         {
-            var variante = roh != emoteId ? $" (Variante von {emoteId})" : string.Empty;
+            var variante = roh != emoteId ? new LocText($" (variant of {emoteId})", $" (Variante von {emoteId})") : new LocText(string.Empty, string.Empty);
 
-            Melde($"emote {roh}{variante}: von {urheber}, an {ziel}, ich bin {eigene} " +
-                  $"({(ausgehend ? "ausgehend" : "empfangen")})");
+            Melde(new($"emote {roh}{variante.En}: from {urheber}, to {ziel}, I am {eigene} " +
+                      $"({(ausgehend ? "outgoing" : "incoming")})",
+                      $"Emote {roh}{variante.De}: von {urheber}, an {ziel}, ich bin {eigene} " +
+                      $"({(ausgehend ? "ausgehend" : "empfangen")})"));
         }
 
         if (andere == 0 || andere == eigene)
         {
             if (diagnose)
                 Melde(andere == 0
-                    ? "  verworfen: kein Gegenueber - das Emote war auf niemanden gerichtet"
-                    : "  verworfen: Gegenueber bin ich selbst");
+                    ? new("  dropped: no target - the emote was aimed at nobody", "  verworfen: kein Gegenüber - das Emote war auf niemanden gerichtet")
+                    : new("  dropped: the target is myself", "  verworfen: Gegenüber bin ich selbst"));
 
             return;
         }
@@ -307,7 +327,7 @@ public sealed class Plugin : IDalamudPlugin
         if (!ausgehend && ziel != eigene)
         {
             if (diagnose)
-                Melde("  verworfen: galt jemand anderem");
+                Melde(new("  dropped: aimed at someone else", "  verworfen: galt jemand anderem"));
 
             return;
         }
@@ -317,13 +337,13 @@ public sealed class Plugin : IDalamudPlugin
         if (string.IsNullOrEmpty(name))
         {
             if (diagnose)
-                Melde($"  verworfen: Kennung {andere} ist in der Objekttabelle nicht zu finden");
+                Melde(new($"  dropped: ID {andere} is not in the object table", $"  verworfen: Kennung {andere} ist in der Objekttabelle nicht zu finden"));
 
             return;
         }
 
         if (diagnose)
-            Melde($"  erkannt als {name}@{WorldCatalog.NameOf(Data, welt)}");
+            Melde(new($"  recognised as {name}@{WorldCatalog.NameOf(Data, welt)}", $"  erkannt als {name}@{WorldCatalog.NameOf(Data, welt)}"));
 
         Handle(new IncomingEvent(
             SenderName: name,
@@ -382,10 +402,10 @@ public sealed class Plugin : IDalamudPlugin
         if (Condition[ConditionFlag.BetweenAreas] || Condition[ConditionFlag.BetweenAreas51])
             return;
 
-        window.Draw();
+        windows.Draw();
     }
 
-    private void Oeffnen() => window.Visible = !window.Visible;
+    private void Oeffnen() => window.Toggle();
 
     private void AufBefehl(string _, string argumente)
     {
@@ -404,14 +424,14 @@ public sealed class Plugin : IDalamudPlugin
         diagnose = an;
 
         Chat.Print(diagnose
-            ? "[EnCounter] Diagnostics on. Every emote is logged until you turn it off."
-            : "[EnCounter] Diagnostics off.");
+            ? $"[EnCounter] {Loc.T("Diagnostics on. Every emote is logged until you turn it off.", "Diagnose an. Jedes Emote wird protokolliert, bis du sie ausschaltest.")}"
+            : $"[EnCounter] {Loc.T("Diagnostics off.", "Diagnose aus.")}");
     }
 
     /// <summary>Eine Zeile Diagnose, in Log und Chat.</summary>
-    private void Melde(string text)
+    private void Melde(LocText text)
     {
-        Log.Information($"[EnCounter/diag] {text}");
+        Log.Information($"[EnCounter/diag] {text.En}");
         Chat.Print($"[EnCounter] {text}");
     }
 
@@ -434,7 +454,10 @@ public sealed class Plugin : IDalamudPlugin
 
     public void Dispose()
     {
-        Commands.RemoveHandler("/encounter");
+        Loc.Changed -= RegisterCommand;
+        Loc.Dispose();
+        Commands.RemoveHandler(Command);
+        windows.RemoveAllWindows();
         PluginInterface.UiBuilder.Draw -= Draw;
         PluginInterface.UiBuilder.OpenConfigUi -= Oeffnen;
         PluginInterface.UiBuilder.OpenMainUi -= Oeffnen;

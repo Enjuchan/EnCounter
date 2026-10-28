@@ -5,10 +5,10 @@ public static class EnCounterDependencies
 {
     public static readonly IReadOnlyList<DependencyGroup> Groups =
     [
-        new("Required", DependencyKind.Required,
+        new(new("Required", "Erforderlich"), DependencyKind.Required,
         [
             // Honorific liegt in Dalamuds Haupt-Repository (am 2026-10-28 in der Installation geprüft: InstalledFromUrl OFFICIAL).
-            new("Honorific", "Honorific", "Shows the title above your name.", "https://github.com/Caraxi/Honorific",
+            new("Honorific", "Honorific", new("Shows the title above your name.", "Zeigt den Titel über deinem Namen an."), "https://github.com/Caraxi/Honorific",
                 [Dependencies.MainRepository]),
         ]),
     ];

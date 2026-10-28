@@ -11,11 +11,14 @@ public sealed partial class ConfigWindow
 {
     private void DrawEinstellungen()
     {
-        Abschnitt("Counting", "Pause stops all counting without touching your rules. Diagnostics is the same switch as /encounter debug.", breite =>
+        Abschnitt(Loc.T("Counting", "Zählen"),
+            Loc.T("Pause stops all counting without touching your rules. Diagnostics is the same switch as /encounter debug.",
+                  "Pause stoppt das Zählen, ohne deine Regeln anzufassen. Diagnose ist derselbe Schalter wie /encounter debug."), breite =>
         {
             var pause = config.Paused;
-            if (Widgets.ToggleRow("Pause counting", ref pause, breite,
-                    "Nothing is counted and no title is shown. Your rules stay as they are."))
+            if (Widgets.ToggleRow(Loc.T("Pause counting", "Zählen pausieren"), ref pause, breite,
+                    Loc.T("Nothing is counted and no title is shown. Your rules stay as they are.",
+                          "Es wird nichts gezählt und kein Titel angezeigt. Deine Regeln bleiben, wie sie sind.")))
             {
                 config.Paused = pause;
                 save();
@@ -24,15 +27,17 @@ public sealed partial class ConfigWindow
             ImGui.Spacing();
 
             var diagnose = diagnoseLesen();
-            if (Widgets.ToggleRow("Diagnostics", ref diagnose, breite,
-                    "Writes every step of emote and rule processing to the log and to chat. Also shows the draw time of this window in the status line and logs it every 10 seconds."))
+            if (Widgets.ToggleRow(Loc.T("Diagnostics", "Diagnose"), ref diagnose, breite,
+                    Loc.T("Writes every step of emote and rule processing to the log and to chat. Also shows the draw time of this window in the status line and logs it every 10 seconds.",
+                          "Schreibt jeden Schritt der Emote- und Regelverarbeitung ins Log und in den Chat. Zeigt außerdem die Zeichenzeit dieses Fensters in der Statuszeile und schreibt sie alle 10 Sekunden ins Log.")))
                 diagnoseSetzen(diagnose);
         });
 
         DrawImport();
 
-        Abschnitt("Privacy", null, breite =>
-            Umbruch(Theme.Muted, "The list of names and all counters are stored on this computer only.", breite));
+        Abschnitt(Loc.T("Privacy", "Datenschutz"), null, breite =>
+            Umbruch(Theme.Muted, Loc.T("The list of names and all counters are stored on this computer only.",
+                                       "Die Namensliste und alle Zähler liegen nur auf diesem Computer."), breite));
     }
 
     private static void Umbruch(Vector4 farbe, string text, float breite)
@@ -51,12 +56,13 @@ public sealed partial class ConfigWindow
     /// </summary>
     private void DrawImport()
     {
-        Abschnitt("Import from PatMe", null, breite =>
+        Abschnitt(Loc.T("Import from PatMe", "Import aus PatMe"), null, breite =>
         {
-            ImGui.TextColored(Theme.Muted, "Adds counts to the shared list. No rules are created.");
+            ImGui.TextColored(Theme.Muted, Loc.T("Adds counts to the shared list. No rules are created.",
+                                                 "Fügt Zähler zur gemeinsamen Liste hinzu. Es werden keine Regeln angelegt."));
             ImGui.Spacing();
 
-            if (ImGui.Button("Read PatMe"))
+            if (ImGui.Button(Loc.T("Read PatMe", "PatMe lesen")))
             {
                 importFund = PatMeImport.Lesen(konfigOrdner, eigeneCid());
 
@@ -70,7 +76,7 @@ public sealed partial class ConfigWindow
                 if (importErgebnis is { } n)
                 {
                     ImGui.Spacing();
-                    ImGui.TextColored(Theme.Success, n == 1 ? "1 entry imported." : $"{n} entries imported.");
+                    ImGui.TextColored(Theme.Success, n == 1 ? Loc.T("1 entry imported.", "1 Eintrag importiert.") : Loc.T($"{n} entries imported.", $"{n} Einträge importiert."));
                 }
 
                 return;
@@ -86,20 +92,20 @@ public sealed partial class ConfigWindow
             // Beide zaehlen dasselbe, nur unterschiedlich lange - Honorific erst seit
             // seiner Aktivierung. Der hoehere Stand gilt, sonst zaehlte ein Dote doppelt.
             if (fund.HatAus("PatMe") && fund.HatAus("PatMe Honorific"))
-                ImGui.TextColored(Theme.Muted, "Both count the same things - the higher number wins.");
+                ImGui.TextColored(Theme.Muted, Loc.T("Both count the same things - the higher number wins.", "Beide zählen dasselbe - die höhere Zahl gilt."));
 
             ImGui.Spacing();
             var uebernehmbar = DrawImportZahlen(fund, breite);
 
             if (fund.Leer)
-                ImGui.TextColored(Theme.Muted, "Nothing to import.");
+                ImGui.TextColored(Theme.Muted, Loc.T("Nothing to import.", "Nichts zu importieren."));
 
             foreach (var hinweis in fund.Hinweise)
                 Umbruch(Theme.Warning, $"! {hinweis}", breite);
 
             ImGui.Spacing();
 
-            if (Widgets.PrimaryButton("Import", FontAwesomeIcon.Download, uebernehmbar > 0))
+            if (Widgets.PrimaryButton(Loc.T("Import", "Importieren"), FontAwesomeIcon.Download, uebernehmbar > 0))
             {
                 var anzahl = PatMeImport.Anwenden(fund, counters, importAlle);
                 if (anzahl > 0)
@@ -112,7 +118,7 @@ public sealed partial class ConfigWindow
 
             ImGui.SameLine();
 
-            if (ImGui.Button("Discard"))
+            if (ImGui.Button(Loc.T("Discard", "Verwerfen")))
                 importFund = null;
         });
     }
@@ -130,19 +136,19 @@ public sealed partial class ConfigWindow
 
         if (eigener is null)
         {
-            ImGui.TextColored(Theme.Warning, "Current character not found in PatMe.");
+            ImGui.TextColored(Theme.Warning, Loc.T("Current character not found in PatMe.", "Aktueller Charakter in PatMe nicht gefunden."));
         }
         else
         {
             var an = !importAlle;
-            if (Widgets.ToggleRow($"Only {eigener.Name}", ref an, breite))
+            if (Widgets.ToggleRow(Loc.T($"Only {eigener.Name}", $"Nur {eigener.Name}"), ref an, breite))
                 importAlle = !an;
         }
 
         if (fund.Charaktere.Count > 1)
         {
             var alle = importAlle;
-            if (Widgets.ToggleRow($"All {fund.Charaktere.Count} characters, summed", ref alle, breite))
+            if (Widgets.ToggleRow(Loc.T($"All {fund.Charaktere.Count} characters, summed", $"Alle {fund.Charaktere.Count} Charaktere, zusammengerechnet"), ref alle, breite))
                 importAlle = eigener is null || alle;
         }
 
@@ -152,7 +158,7 @@ public sealed partial class ConfigWindow
 
         if (uebernehmbar.Count == 0)
         {
-            ImGui.TextColored(Theme.Muted, "Nothing counted yet.");
+            ImGui.TextColored(Theme.Muted, Loc.T("Nothing counted yet.", "Noch nichts gezählt."));
             return 0;
         }
 
@@ -160,8 +166,8 @@ public sealed partial class ConfigWindow
         if (ImGui.BeginTable("importzahlen", 3, flags))
         {
             ImGui.TableSetupColumn("Emote", ImGuiTableColumnFlags.WidthStretch);
-            ImGui.TableSetupColumn("Received", ImGuiTableColumnFlags.WidthStretch);
-            ImGui.TableSetupColumn("Given", ImGuiTableColumnFlags.WidthStretch);
+            ImGui.TableSetupColumn(Loc.T("Received", "Empfangen"), ImGuiTableColumnFlags.WidthStretch);
+            ImGui.TableSetupColumn(Loc.T("Given", "Gegeben"), ImGuiTableColumnFlags.WidthStretch);
             ImGui.TableHeadersRow();
 
             foreach (var emote in uebernehmbar.GroupBy(p => p.EmoteId))
@@ -198,9 +204,11 @@ public sealed partial class ConfigWindow
 
         ImGui.Spacing();
         Umbruch(Theme.Warning,
-            $"PatMe does not record who did it, so these arrive as one entry named {PatMeImport.SammelName}.", breite);
+            Loc.T($"PatMe does not record who did it, so these arrive as one entry named {PatMeImport.SammelName}.",
+                  $"PatMe speichert nicht, wer es getan hat, deshalb landen diese Stände unter einem Eintrag namens {PatMeImport.SammelName}."), breite);
 
-        ImGui.TextColored(Theme.Muted, "Importing again replaces that entry - it never adds up twice.");
+        ImGui.TextColored(Theme.Muted, Loc.T("Importing again replaces that entry - it never adds up twice.",
+                                             "Erneutes Importieren ersetzt diesen Eintrag - nichts wird doppelt addiert."));
         return uebernehmbar.Count;
     }
 
@@ -212,10 +220,10 @@ public sealed partial class ConfigWindow
     private static void DrawQuelle(string plugin, bool gefunden, bool hatZahlen)
     {
         var (punkt, tooltip) = !gefunden
-            ? (Theme.Danger, "not installed")
+            ? (Theme.Danger, Loc.T("not installed", "nicht installiert"))
             : hatZahlen
-                ? (Theme.Success, "found")
-                : (Theme.Warning, "found, but has not counted anything");
+                ? (Theme.Success, Loc.T("found", "gefunden"))
+                : (Theme.Warning, Loc.T("found, but has not counted anything", "gefunden, hat aber noch nichts gezählt"));
 
         Widgets.StatusPill(plugin, punkt);
         if (ImGui.IsItemHovered())

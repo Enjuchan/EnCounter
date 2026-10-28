@@ -57,6 +57,9 @@ public sealed partial class ConfigWindow
         foreach (var regel in config.Rules)
             hash.Add(regel.Name);
 
+        // Die Namen im Modell sind übersetzt gebaut.
+        hash.Add(Loc.Current);
+
         return hash.ToHashCode();
     }
 
@@ -116,28 +119,37 @@ public sealed partial class ConfigWindow
 
         string Beschriftung(Zaehlbereich b) => b switch
         {
-            Zaehlbereich.Totals => "Totals",
-            Zaehlbereich.Received => $"Received · {Personen(modell.EmpfangenAlle)}",
-            _ => $"Given · {Personen(modell.GegebenAlle)}",
+            Zaehlbereich.Totals => Loc.T("Totals", "Gesamt"),
+            Zaehlbereich.Received => $"{Loc.T("Received", "Empfangen")} · {Personen(modell.EmpfangenAlle)}",
+            _ => $"{Loc.T("Given", "Gegeben")} · {Personen(modell.GegebenAlle)}",
         };
 
         Widgets.Segmented("zaehlbereich", Zaehlbereiche, Beschriftung, ref zaehlbereich,
             Math.Max(Widgets.S(300), ImGui.GetContentRegionAvail().X - suchbreite - abstand));
         ImGui.SameLine();
         ImGui.SetNextItemWidth(suchbreite);
-        ImGui.InputTextWithHint("##zaehlersuche", "Search", ref zaehlerSuche, 64);
+        ImGui.InputTextWithHint("##zaehlersuche", Loc.T("Search", "Suchen"), ref zaehlerSuche, 64);
         ImGui.Spacing();
 
         if (modell.TotalsAlle == 0 && modell.EmpfangenAlle == 0 && modell.GegebenAlle == 0)
         {
-            ImGui.TextColored(Theme.Muted, "Nothing counted yet. Counts appear here as soon as a rule counts something.");
+            ImGui.TextColored(Theme.Muted, Loc.T("Nothing counted yet. Counts appear here as soon as a rule counts something.",
+                                                 "Noch nichts gezählt. Zähler erscheinen hier, sobald eine Regel etwas zählt."));
             return;
         }
 
-        const string hilfe = "Counters belong to the event and are shared by all rules.\n" +
-                             "Totals counts events; Received and Given list people.\n" +
-                             "Counts can only be reset, not typed in.";
-        Widgets.SectionHeader(zaehlbereich.ToString(), hilfe);
+        var hilfe = Loc.T("Counters belong to the event and are shared by all rules.\n" +
+                          "Totals counts events; Received and Given list people.\n" +
+                          "Counts can only be reset, not typed in.",
+                          "Zähler gehören dem Event und werden von allen Regeln geteilt.\n" +
+                          "Gesamt zählt Events; Empfangen und Gegeben listen Personen.\n" +
+                          "Zähler lassen sich nur zurücksetzen, nicht eintippen.");
+        Widgets.SectionHeader(zaehlbereich switch
+        {
+            Zaehlbereich.Totals => Loc.T("Totals", "Gesamt"),
+            Zaehlbereich.Received => Loc.T("Received", "Empfangen"),
+            _ => Loc.T("Given", "Gegeben"),
+        }, hilfe);
 
         ImGui.BeginChild("zaehlerinhalt", new Vector2(0, 0));
         switch (zaehlbereich)
@@ -156,7 +168,9 @@ public sealed partial class ConfigWindow
         ImGui.EndChild();
     }
 
-    private static string Personen(int anzahl) => anzahl == 1 ? "1 person" : $"{anzahl} people";
+    // Deutsch ohne Substantiv, damit die Beschriftungen der Umschaltleiste in ihre Felder passen.
+    private static string Personen(int anzahl) =>
+        Loc.Current == Language.German ? anzahl.ToString() : anzahl == 1 ? "1 person" : $"{anzahl} people";
 
     private static void RechtsText(string text, Vector4 farbe)
     {
@@ -171,7 +185,7 @@ public sealed partial class ConfigWindow
     {
         if (modell.Totals.Count == 0)
         {
-            ImGui.TextColored(Theme.Muted, "No matches.");
+            ImGui.TextColored(Theme.Muted, Loc.T("No matches.", "Keine Treffer."));
             return;
         }
 
@@ -180,8 +194,8 @@ public sealed partial class ConfigWindow
             return;
 
         ImGui.TableSetupColumn("Event", ImGuiTableColumnFlags.WidthStretch);
-        ImGui.TableSetupColumn("Received", ImGuiTableColumnFlags.WidthFixed, Widgets.S(80));
-        ImGui.TableSetupColumn("Given", ImGuiTableColumnFlags.WidthFixed, Widgets.S(80));
+        ImGui.TableSetupColumn(Loc.T("Received", "Empfangen"), ImGuiTableColumnFlags.WidthFixed, Widgets.S(90));
+        ImGui.TableSetupColumn(Loc.T("Given", "Gegeben"), ImGuiTableColumnFlags.WidthFixed, Widgets.S(90));
         ImGui.TableSetupColumn("##reset", ImGuiTableColumnFlags.WidthFixed, Widgets.S(36));
         ImGui.TableHeadersRow();
 
@@ -206,7 +220,7 @@ public sealed partial class ConfigWindow
                 zeile.Gegeben > 0 ? Theme.Text : Theme.Muted);
 
             ImGui.TableNextColumn();
-            if (Widgets.ShiftButton($"ges{zeile.Basis}", FontAwesomeIcon.Undo, "reset this event for everyone"))
+            if (Widgets.ShiftButton($"ges{zeile.Basis}", FontAwesomeIcon.Undo, new("reset this event for everyone", "dieses Event für alle zurückzusetzen")))
                 zuruecksetzen = zeile.Basis;
         }
 
@@ -275,15 +289,15 @@ public sealed partial class ConfigWindow
         if (alle == 0)
         {
             ImGui.TextColored(Theme.Muted, gegeben
-                ? "You have not emoted anyone yet."
-                : "Nobody has emoted you yet.");
+                ? Loc.T("You have not emoted anyone yet.", "Du hast noch kein Emote auf jemanden gerichtet.")
+                : Loc.T("Nobody has emoted you yet.", "Noch niemand hat ein Emote auf dich gerichtet."));
 
             return;
         }
 
         if (personen.Count == 0)
         {
-            ImGui.TextColored(Theme.Muted, "No matches.");
+            ImGui.TextColored(Theme.Muted, Loc.T("No matches.", "Keine Treffer."));
             return;
         }
 
@@ -325,7 +339,7 @@ public sealed partial class ConfigWindow
                     ImGui.TextUnformatted(eintrag.Name);
 
                     ImGui.SetCursorScreenPos(new Vector2(zeile.X + breite - knopf, zeile.Y));
-                    if (!Widgets.ShiftButton($"x{eintrag.Basis}", FontAwesomeIcon.Undo, "reset this person for this event"))
+                    if (!Widgets.ShiftButton($"x{eintrag.Basis}", FontAwesomeIcon.Undo, new("reset this person for this event", "diese Person für dieses Event zurückzusetzen")))
                         continue;
 
                     var schluessel = gegeben ? eintrag.Basis + CounterScope.GivenSuffix : eintrag.Basis;
@@ -366,7 +380,7 @@ public sealed partial class ConfigWindow
         const string legacy = CounterScope.EmotePrefix + "legacy:";
 
         if (basis.StartsWith(legacy, StringComparison.Ordinal))
-            return (Regelname(basis[legacy.Length..], "any emote"), gegeben);
+            return (Regelname(basis[legacy.Length..], Loc.T("any emote", "beliebiges Emote")), gegeben);
 
         if (basis.StartsWith(CounterScope.EmotePrefix, StringComparison.Ordinal))
         {
@@ -380,7 +394,7 @@ public sealed partial class ConfigWindow
             return ($"\"{basis[CounterScope.TextPrefix.Length..]}\"", gegeben);
 
         if (basis.StartsWith(CounterScope.RulePrefix, StringComparison.Ordinal))
-            return (Regelname(basis[CounterScope.RulePrefix.Length..], "any message"), gegeben);
+            return (Regelname(basis[CounterScope.RulePrefix.Length..], Loc.T("any message", "beliebige Nachricht")), gegeben);
 
         return (basis, gegeben);
     }
@@ -394,7 +408,7 @@ public sealed partial class ConfigWindow
         var regel = config.Rules.FirstOrDefault(r => r.Id == id);
 
         return regel is null
-            ? $"deleted rule ({zusatz})"
+            ? $"{Loc.T("deleted rule", "gelöschte Regel")} ({zusatz})"
             : $"{regel.Name} ({zusatz})";
     }
 }

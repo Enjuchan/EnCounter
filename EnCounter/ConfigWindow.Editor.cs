@@ -21,7 +21,7 @@ public sealed partial class ConfigWindow
 
     /// <summary>Stand einer Regel vor dem Wechsel zwischen Emotes und Chat, damit sich der Wechsel zurücknehmen lässt.</summary>
     private sealed record ArtMerker(
-        Rule Regel, string Hinweis, List<ChatChannel> Kanaele, List<string> TriggerTexte,
+        Rule Regel, LocText Hinweis, List<ChatChannel> Kanaele, List<string> TriggerTexte,
         bool EigenerName, List<uint> EmoteIds);
 
     private Bereich bereich;
@@ -41,7 +41,7 @@ public sealed partial class ConfigWindow
         DrawTitelVorschau(regel);
         ImGui.Spacing();
 
-        Widgets.Segmented("bereich", Bereiche, b => b.ToString(), ref bereich, ImGui.GetContentRegionAvail().X);
+        Widgets.Segmented("bereich", Bereiche, Bereichsname, ref bereich, ImGui.GetContentRegionAvail().X);
         ImGui.Spacing();
 
         switch (bereich)
@@ -57,6 +57,13 @@ public sealed partial class ConfigWindow
                 break;
         }
     }
+
+    private static string Bereichsname(Bereich b) => b switch
+    {
+        Bereich.Trigger => Loc.T("Trigger", "Auslöser"),
+        Bereich.Title => Loc.T("Title", "Titel"),
+        _ => Loc.T("Look", "Aussehen"),
+    };
 
     private static bool IstEmoteRegel(Rule regel) =>
         regel.Channels.Contains(ChatChannel.StandardEmote) ||
@@ -81,9 +88,9 @@ public sealed partial class ConfigWindow
         {
             if (regel.Direction == CountDirection.Both)
             {
-                ZeichneVorschauzeile(regel, "They emote you", false, breite);
+                ZeichneVorschauzeile(regel, Loc.T("They emote you", "Sie emoten dich"), false, breite);
                 ImGui.Spacing();
-                ZeichneVorschauzeile(regel, "You emote them", true, breite);
+                ZeichneVorschauzeile(regel, Loc.T("You emote them", "Du emotest sie"), true, breite);
             }
             else
             {
@@ -91,8 +98,8 @@ public sealed partial class ConfigWindow
             }
 
             var beispiel = regel.ShowName
-                ? $"Example: {TitleTemplate.ExampleName}, {TitleTemplate.ExamplePersonalCount}"
-                : $"Example: {TitleTemplate.ExampleTotalCount} in total";
+                ? $"{Loc.T("Example", "Beispiel")}: {TitleTemplate.ExampleName}, {TitleTemplate.ExamplePersonalCount}"
+                : Loc.T($"Example: {TitleTemplate.ExampleTotalCount} in total", $"Beispiel: {TitleTemplate.ExampleTotalCount} insgesamt");
             ImGui.TextColored(Theme.Muted, beispiel);
         });
     }
@@ -117,7 +124,7 @@ public sealed partial class ConfigWindow
 
         if (text.Length == 0)
         {
-            draw.AddText(start, Theme.U32(Theme.Muted), "(empty)");
+            draw.AddText(start, Theme.U32(Theme.Muted), Loc.T("(empty)", "(leer)"));
         }
         else if (!regel.UseColours)
         {
@@ -201,14 +208,17 @@ public sealed partial class ConfigWindow
     {
         // Nur die vollstaendige Form ist eindeutig: Vornamen wiederholen sich, und
         // Namen sind in FFXIV ohnehin nur pro Welt eindeutig.
-        const string hilfe = "Only these people count - and this rule's text wins over a general one.\n" +
-                             "Enter the full name and world, for example: Stella Unibell@Shiva.\n" +
-                             "Names are only unique per world, so partial names never match.";
+        var hilfe = Loc.T("Only these people count - and this rule's text wins over a general one.\n" +
+                          "Enter the full name and world, for example: Stella Unibell@Shiva.\n" +
+                          "Names are only unique per world, so partial names never match.",
+                          "Nur diese Personen zählen - und der Text dieser Regel hat Vorrang vor einer allgemeinen.\n" +
+                          "Gib den vollen Namen mit Welt ein, etwa Stella Unibell@Shiva.\n" +
+                          "Namen sind nur pro Welt eindeutig, deshalb treffen Teilnamen nie zu.");
 
-        Abschnitt("Only from", hilfe, breite =>
+        Abschnitt(Loc.T("Only from", "Nur von"), hilfe, breite =>
         {
             if (regel.OnlyFrom.Count == 0)
-                ImGui.TextColored(Theme.Muted, "Anyone counts.");
+                ImGui.TextColored(Theme.Muted, Loc.T("Anyone counts.", "Alle zählen."));
 
             var entfernen = -1;
             var erste = true;
@@ -217,7 +227,7 @@ public sealed partial class ConfigWindow
                 var name = regel.OnlyFrom[i];
                 var vollstaendig = RuleMatcher.IstVollstaendig(name);
                 var beschriftung = vollstaendig ? TitleTemplate.FirstName(name) : name;
-                var tooltip = vollstaendig ? name : "Incomplete - never matches. Use Firstname Lastname@World.";
+                var tooltip = vollstaendig ? name : Loc.T("Incomplete - never matches. Use Firstname Lastname@World.", "Unvollständig - trifft nie zu. Nutze Vorname Nachname@Welt.");
 
                 Widgets.Flow(ref erste, Widgets.TagChipWidth(beschriftung, false), 12f);
                 if (Widgets.TagChip($"per{i}", beschriftung, vollstaendig ? null : Theme.Danger, 0, tooltip))
@@ -235,13 +245,15 @@ public sealed partial class ConfigWindow
 
             var abstand = ImGui.GetStyle().ItemSpacing.X;
             var ziel = aktuellesZiel();
-            var feld = Math.Max(Widgets.S(120), breite - KnopfBreite("Add") - KnopfBreite("Current target") - abstand * 2);
+            var hinzufuegen = Loc.T("Add", "Hinzufügen");
+            var aktuellesZielText = Loc.T("Current target", "Aktuelles Ziel");
+            var feld = Math.Max(Widgets.S(120), breite - KnopfBreite(hinzufuegen) - KnopfBreite(aktuellesZielText) - abstand * 2);
 
             ImGui.SetNextItemWidth(feld);
-            ImGui.InputTextWithHint("##newperson", "Firstname Lastname@World", ref neuerName, 64);
+            ImGui.InputTextWithHint("##newperson", Loc.T("Firstname Lastname@World", "Vorname Nachname@Welt"), ref neuerName, 64);
 
             ImGui.SameLine();
-            if (ImGui.Button("Add##person") && !string.IsNullOrWhiteSpace(neuerName))
+            if (ImGui.Button($"{hinzufuegen}##person") && !string.IsNullOrWhiteSpace(neuerName))
             {
                 regel.OnlyFrom.Add(neuerName.Trim());
                 neuerName = string.Empty;
@@ -253,18 +265,18 @@ public sealed partial class ConfigWindow
             // Bequemer Weg zum richtigen Namen: Wer im Spiel steht, tippt sich nicht
             // vertippt - und die Welt kommt gleich mit.
             ImGui.BeginDisabled(ziel is null);
-            var gewaehlt = ImGui.Button("Current target");
+            var gewaehlt = ImGui.Button(aktuellesZielText);
             ImGui.EndDisabled();
 
             if (ziel is null)
             {
                 if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-                    ImGui.SetTooltip("Target a player in game to use this.");
+                    ImGui.SetTooltip(Loc.T("Target a player in game to use this.", "Wähle im Spiel einen Spieler als Ziel, um das zu nutzen."));
             }
             else
             {
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip($"Add {ziel}");
+                    ImGui.SetTooltip(Loc.T($"Add {ziel}", $"{ziel} hinzufügen"));
 
                 if (gewaehlt && !regel.OnlyFrom.Contains(ziel, StringComparer.CurrentCultureIgnoreCase))
                 {
@@ -281,21 +293,21 @@ public sealed partial class ConfigWindow
     /// </summary>
     private void DrawArtwahl(Rule regel, bool istEmote)
     {
-        Abschnitt("Listens to", null, breite =>
+        Abschnitt(Loc.T("Listens to", "Hört auf"), null, breite =>
         {
             var art = istEmote ? Art.Emotes : Art.Chat;
             if (Widgets.Segmented("art", Arten, a => a == Art.Emotes ? "Emotes" : "Chat", ref art, breite))
                 WechsleArt(regel, istEmote, art);
 
             ImGui.TextColored(Theme.Muted, istEmote
-                ? "Counts emotes like /hug or /pet, taken straight from the game."
-                : "Counts chat messages containing one of your trigger words.");
+                ? Loc.T("Counts emotes like /hug or /pet, taken straight from the game.", "Zählt Emotes wie /hug oder /pet, direkt aus dem Spiel.")
+                : Loc.T("Counts chat messages containing one of your trigger words.", "Zählt Chatnachrichten, die eines deiner Triggerwörter enthalten."));
 
             if (artMerker is not null && artMerker.Regel == regel)
             {
-                ImGui.TextUnformatted(artMerker.Hinweis);
+                ImGui.TextUnformatted(artMerker.Hinweis.ToString());
                 ImGui.SameLine();
-                if (ImGui.SmallButton("Undo"))
+                if (ImGui.SmallButton(Loc.T("Undo", "Rückgängig")))
                 {
                     regel.Channels.Clear();
                     regel.Channels.AddRange(artMerker.Kanaele);
@@ -319,10 +331,11 @@ public sealed partial class ConfigWindow
 
             if (uebrig > 0)
             {
-                ImGui.TextColored(Theme.Danger, $"This rule also still listens to {uebrig} chat channel(s).");
+                ImGui.TextColored(Theme.Danger, Loc.T($"This rule also still listens to {uebrig} chat channel(s).",
+                    uebrig == 1 ? "Diese Regel hört außerdem noch auf 1 Chatkanal." : $"Diese Regel hört außerdem noch auf {uebrig} Chatkanäle."));
                 ImGui.SameLine();
 
-                if (ImGui.SmallButton("Remove them"))
+                if (ImGui.SmallButton(Loc.T("Remove them", "Entfernen")))
                 {
                     regel.Channels.RemoveAll(k => !Emotekanaele.Contains(k));
                     save();
@@ -336,10 +349,11 @@ public sealed partial class ConfigWindow
             if (!textreste)
                 return;
 
-            ImGui.TextColored(Theme.Warning, "Trigger words or the name check are left over and ignored for emotes.");
+            ImGui.TextColored(Theme.Warning, Loc.T("Trigger words or the name check are left over and ignored for emotes.",
+                "Triggerwörter oder die Namensprüfung sind übrig und werden bei Emotes ignoriert."));
             ImGui.SameLine();
 
-            if (!ImGui.SmallButton("Clear them"))
+            if (!ImGui.SmallButton(Loc.T("Clear them", "Löschen")))
                 return;
 
             regel.TriggerTexts.Clear();
@@ -353,7 +367,7 @@ public sealed partial class ConfigWindow
         if (istEmote == (neu == Art.Emotes))
             return;
 
-        artMerker = new ArtMerker(regel, neu == Art.Chat ? "Switched to Chat." : "Switched to Emotes.",
+        artMerker = new ArtMerker(regel, neu == Art.Chat ? new LocText("Switched to Chat.", "Zu Chat gewechselt.") : new LocText("Switched to Emotes.", "Zu Emotes gewechselt."),
             [.. regel.Channels], [.. regel.TriggerTexts], regel.RequiresOwnName, [.. regel.EmoteIds]);
 
         if (neu == Art.Chat)
@@ -381,12 +395,13 @@ public sealed partial class ConfigWindow
     /// </summary>
     private void DrawKanaele(Rule regel)
     {
-        Abschnitt("Channels", null, _ =>
+        Abschnitt(Loc.T("Channels", "Kanäle"), null, _ =>
         {
-            DrawKanalgruppe(regel, "General", Kanalspalten[0]);
-            DrawKanalgruppe(regel, "Group", Kanalspalten[1].Concat(Kanalspalten[2]));
+            var spalten = Kanalspalten;
+            DrawKanalgruppe(regel, Loc.T("General", "Allgemein"), spalten[0]);
+            DrawKanalgruppe(regel, Loc.T("Group", "Gruppe"), spalten[1].Concat(spalten[2]));
             DrawKanalgruppe(regel, "Linkshells", Linkshells.Select((k, i) => ($"{i + 1}", k)));
-            DrawKanalgruppe(regel, "Cross-world linkshells", WeltLinkshells.Select((k, i) => ($"{i + 1}", k)));
+            DrawKanalgruppe(regel, Loc.T("Cross-world linkshells", "Weltenübergreifende Linkshells"), WeltLinkshells.Select((k, i) => ($"{i + 1}", k)));
         });
     }
 
@@ -421,10 +436,11 @@ public sealed partial class ConfigWindow
 
     private void DrawTrigger(Rule regel)
     {
-        Abschnitt("Trigger words", "Any of these must appear in the message. Empty: every message counts.", breite =>
+        Abschnitt(Loc.T("Trigger words", "Triggerwörter"),
+            Loc.T("Any of these must appear in the message. Empty: every message counts.", "Eines davon muss in der Nachricht vorkommen. Leer: Jede Nachricht zählt."), breite =>
         {
             if (regel.TriggerTexts.Count == 0)
-                ImGui.TextColored(Theme.Muted, "Empty: every message counts.");
+                ImGui.TextColored(Theme.Muted, Loc.T("Empty: every message counts.", "Leer: Jede Nachricht zählt."));
 
             var entfernen = -1;
             var erste = true;
@@ -445,11 +461,12 @@ public sealed partial class ConfigWindow
             if (regel.TriggerTexts.Count > 0)
                 ImGui.Spacing();
 
-            ImGui.SetNextItemWidth(Math.Max(Widgets.S(120), breite - KnopfBreite("Add") - ImGui.GetStyle().ItemSpacing.X));
-            var enter = ImGui.InputTextWithHint("##newtrigger", "Add a word or phrase…", ref neuerTrigger, 128,
+            var hinzufuegen = Loc.T("Add", "Hinzufügen");
+            ImGui.SetNextItemWidth(Math.Max(Widgets.S(120), breite - KnopfBreite(hinzufuegen) - ImGui.GetStyle().ItemSpacing.X));
+            var enter = ImGui.InputTextWithHint("##newtrigger", Loc.T("Add a word or phrase…", "Wort oder Satz hinzufügen…"), ref neuerTrigger, 128,
                 ImGuiInputTextFlags.EnterReturnsTrue);
             ImGui.SameLine();
-            var knopf = ImGui.Button("Add##trigger");
+            var knopf = ImGui.Button($"{hinzufuegen}##trigger");
 
             if ((enter || knopf) && !string.IsNullOrWhiteSpace(neuerTrigger))
             {
@@ -465,8 +482,8 @@ public sealed partial class ConfigWindow
             ImGui.Spacing();
 
             var eigenerName = regel.RequiresOwnName;
-            if (Widgets.ToggleRow("Message must contain my name", ref eigenerName, breite,
-                    "Ignored in Tell - those are addressed to you anyway."))
+            if (Widgets.ToggleRow(Loc.T("Message must contain my name", "Nachricht muss meinen Namen enthalten"), ref eigenerName, breite,
+                    Loc.T("Ignored in Tell - those are addressed to you anyway.", "Bei Flüstern ignoriert - die sind ohnehin an dich gerichtet.")))
             {
                 regel.RequiresOwnName = eigenerName;
                 save();
@@ -480,7 +497,7 @@ public sealed partial class ConfigWindow
     /// </summary>
     private void DrawRichtung(Rule regel)
     {
-        Abschnitt("Direction", null, breite =>
+        Abschnitt(Loc.T("Direction", "Richtung"), null, breite =>
         {
             var richtung = regel.Direction;
             if (Widgets.Segmented("richtung", Richtungen, Richtungsname, ref richtung, breite))
@@ -489,33 +506,33 @@ public sealed partial class ConfigWindow
                 save();
             }
 
-            ImGui.TextColored(Theme.Muted, "The counter is always kept per other person, never for yourself.");
+            ImGui.TextColored(Theme.Muted, Loc.T("The counter is always kept per other person, never for yourself.", "Der Zähler läuft immer pro anderer Person, nie für dich selbst."));
         });
     }
 
     private static string Richtungsname(CountDirection richtung) => richtung switch
     {
-        CountDirection.Received => "They emote me",
-        CountDirection.Given => "I emote them",
-        _ => "Both",
+        CountDirection.Received => Loc.T("They emote me", "Sie emoten mich"),
+        CountDirection.Given => Loc.T("I emote them", "Ich emote sie"),
+        _ => Loc.T("Both", "Beides"),
     };
 
     private void DrawBremse(Rule regel)
     {
-        Abschnitt("Spam guard", null, _ =>
+        Abschnitt(Loc.T("Spam guard", "Spam-Schutz"), null, _ =>
         {
             var sekunden = regel.CooldownSeconds;
             ImGui.SetNextItemWidth(Widgets.S(220));
 
-            if (ImGui.SliderInt("Cooldown per person", ref sekunden, 0, 60, sekunden == 0 ? "off" : "%d s"))
+            if (ImGui.SliderInt(Loc.T("Cooldown per person", "Cooldown pro Person"), ref sekunden, 0, 60, sekunden == 0 ? Loc.T("off", "aus") : "%d s"))
             {
                 regel.CooldownSeconds = sekunden;
                 save();
             }
 
             ImGui.TextColored(Theme.Muted, sekunden == 0
-                ? "Every single event counts - a macro can run the number up."
-                : $"The same person counts again after {sekunden}s at the earliest.");
+                ? Loc.T("Every single event counts - a macro can run the number up.", "Jedes einzelne Ereignis zählt - ein Makro kann die Zahl hochtreiben.")
+                : Loc.T($"The same person counts again after {sekunden}s at the earliest.", $"Dieselbe Person zählt frühestens nach {sekunden} s wieder."));
         });
     }
 
@@ -529,10 +546,10 @@ public sealed partial class ConfigWindow
         {
             if (regel.EmoteIds.Count == 0)
             {
-                Widgets.Pill("All emotes", Theme.Border, Theme.Text);
+                Widgets.Pill(Loc.T("All emotes", "Alle Emotes"), Theme.Border, Theme.Text);
                 ImGui.TextColored(Theme.Muted, regel.Direction == CountDirection.Given
-                    ? "Empty: every emote you aim at someone counts."
-                    : "Empty: every emote aimed at you counts.");
+                    ? Loc.T("Empty: every emote you aim at someone counts.", "Leer: Jedes Emote, das du auf jemanden richtest, zählt.")
+                    : Loc.T("Empty: every emote aimed at you counts.", "Leer: Jedes Emote, das auf dich gerichtet ist, zählt."));
             }
 
             var katalog = EmoteCatalog.All(data);
@@ -558,7 +575,7 @@ public sealed partial class ConfigWindow
                 ImGui.Spacing();
 
             ImGui.SetNextItemWidth(breite);
-            ImGui.InputTextWithHint("##emotesuche", "Add emote…", ref emoteSuche, 64);
+            ImGui.InputTextWithHint("##emotesuche", Loc.T("Add emote…", "Emote hinzufügen…"), ref emoteSuche, 64);
 
             if (string.IsNullOrWhiteSpace(emoteSuche))
                 return;
@@ -578,7 +595,7 @@ public sealed partial class ConfigWindow
 
                 if (++treffer > 40)
                 {
-                    ImGui.TextColored(Theme.Muted, "...more matches, refine the search.");
+                    ImGui.TextColored(Theme.Muted, Loc.T("...more matches, refine the search.", "...weitere Treffer, grenze die Suche ein."));
                     break;
                 }
 
@@ -603,7 +620,7 @@ public sealed partial class ConfigWindow
             }
 
             if (treffer == 0)
-                ImGui.TextColored(Theme.Muted, "Nothing found.");
+                ImGui.TextColored(Theme.Muted, Loc.T("Nothing found.", "Nichts gefunden."));
 
             ImGui.EndChild();
         });
@@ -632,10 +649,11 @@ public sealed partial class ConfigWindow
 
         // Der Unterschied ist nicht nur der Name: Mit Namen zeigt die Meldung den
         // Zaehler dieser Person, ohne Namen die Summe ueber alle.
-        Abschnitt("Shows", null, breite =>
+        Abschnitt(Loc.T("Shows", "Zeigt"), null, breite =>
         {
             var zeige = regel.ShowName ? Zeige.Person : Zeige.Gesamt;
-            if (Widgets.Segmented("zeige", ZeigeWerte, z => z == Zeige.Person ? "One person's count" : "Total across everyone",
+            if (Widgets.Segmented("zeige", ZeigeWerte,
+                    z => z == Zeige.Person ? Loc.T("One person's count", "Zähler einer Person") : Loc.T("Total across everyone", "Summe über alle"),
                     ref zeige, breite))
             {
                 regel.ShowName = zeige == Zeige.Person;
@@ -643,20 +661,23 @@ public sealed partial class ConfigWindow
             }
 
             ImGui.TextColored(Theme.Muted, regel.ShowName
-                ? "How often THIS person did it."
-                : "How often ANYONE did it.");
+                ? Loc.T("How often THIS person did it.", "Wie oft DIESE Person es getan hat.")
+                : Loc.T("How often ANYONE did it.", "Wie oft IRGENDJEMAND es getan hat."));
         });
 
         var istEmote = IstEmoteRegel(regel);
         var beideRichtungen = istEmote && regel.Direction == CountDirection.Both;
 
-        const string hilfe = "[Name] and [Count] are filled in.\n" +
-                             "With a name, the title shows this person's count; if the name makes it too long, " +
-                             "the template without a name is used instead.";
+        var hilfe = Loc.T("[Name] and [Count] are filled in.\n" +
+                          "With a name, the title shows this person's count; if the name makes it too long, " +
+                          "the template without a name is used instead.",
+                          "[Name] und [Count] werden ersetzt.\n" +
+                          "Mit Namen zeigt der Titel den Zähler dieser Person; wird er mit dem Namen zu lang, " +
+                          "gilt stattdessen die Vorlage ohne Namen.");
 
-        Abschnitt("Templates", hilfe, breite =>
+        Abschnitt(Loc.T("Templates", "Vorlagen"), hilfe, breite =>
         {
-            ImGui.TextColored(Theme.Muted, "Insert");
+            ImGui.TextColored(Theme.Muted, Loc.T("Insert", "Einfügen"));
             foreach (var platzhalter in new[] { "[Name]", "[Count]" })
             {
                 ImGui.SameLine();
@@ -667,12 +688,12 @@ public sealed partial class ConfigWindow
             // Bei ausgehenden Emotes ist [Name] nicht der Urheber, sondern das Ziel - eine
             // Vorlage wie "[Name] hugged me" stuende dann genau verkehrt herum.
             if (istEmote && regel.Direction == CountDirection.Given)
-                ImGui.TextColored(Theme.Warning, "[Name] is the person you emoted, not the sender.");
+                ImGui.TextColored(Theme.Warning, Loc.T("[Name] is the person you emoted, not the sender.", "[Name] ist die Person, auf die du das Emote gerichtet hast, nicht der Absender."));
 
             ImGui.Spacing();
 
             if (beideRichtungen)
-                ImGui.TextUnformatted("When they emote you");
+                ImGui.TextUnformatted(Loc.T("When they emote you", "Wenn sie dich emoten"));
 
             DrawVorlagenpaar(regel,
                 () => regel.PersonalTemplate, v => regel.PersonalTemplate = v,
@@ -685,8 +706,8 @@ public sealed partial class ConfigWindow
                 return;
 
             ImGui.Spacing();
-            ImGui.TextUnformatted("When you emote them");
-            ImGui.TextColored(Theme.Muted, "Leave empty to use the templates above.");
+            ImGui.TextUnformatted(Loc.T("When you emote them", "Wenn du sie emotest"));
+            ImGui.TextColored(Theme.Muted, Loc.T("Leave empty to use the templates above.", "Leer lassen, um die Vorlagen oben zu nutzen."));
 
             DrawVorlagenpaar(regel,
                 () => regel.GivenPersonalTemplate, v => regel.GivenPersonalTemplate = v,
@@ -694,11 +715,11 @@ public sealed partial class ConfigWindow
                 kuerzel: "given", ersatz: regel, breite);
         });
 
-        Abschnitt("Display", null, breite =>
+        Abschnitt(Loc.T("Display", "Anzeige"), null, breite =>
         {
             var sekunden = regel.DisplaySeconds;
             ImGui.SetNextItemWidth(Widgets.S(220));
-            if (ImGui.SliderInt("Seconds shown", ref sekunden, 1, 60))
+            if (ImGui.SliderInt(Loc.T("Seconds shown", "Sekunden sichtbar"), ref sekunden, 1, 60))
             {
                 regel.DisplaySeconds = sekunden;
                 save();
@@ -708,7 +729,7 @@ public sealed partial class ConfigWindow
 
             // Ueber oder unter dem Namen - Honorific kann beides.
             var lage = regel.IsPrefix ? Lage.Ueber : Lage.Unter;
-            if (Widgets.Segmented("lage", LageWerte, l => l == Lage.Ueber ? "Above the name" : "Below the name", ref lage, breite))
+            if (Widgets.Segmented("lage", LageWerte, l => l == Lage.Ueber ? Loc.T("Above the name", "Über dem Namen") : Loc.T("Below the name", "Unter dem Namen"), ref lage, breite))
             {
                 regel.IsPrefix = lage == Lage.Ueber;
                 save();
@@ -742,13 +763,15 @@ public sealed partial class ConfigWindow
     {
         if (regel.ShowName)
         {
-            DrawVorlage("With name", $"mit{kuerzel}", mitNamenLesen, TitleTemplate.MaxPersonalFreeText,
+            DrawVorlage(Loc.T("With name", "Mit Namen"), $"mit{kuerzel}", mitNamenLesen, TitleTemplate.MaxPersonalFreeText,
                         mitNamenSetzen, mitNamen: true, ersatz: ersatz?.PersonalTemplate, breite);
 
             ImGui.Spacing();
         }
 
-        DrawVorlage(regel.ShowName ? "Without name (fallback if the name makes it too long)" : "Without name",
+        DrawVorlage(regel.ShowName
+                        ? Loc.T("Without name (fallback if the name makes it too long)", "Ohne Namen (Rückfall, wenn der Name zu lang wird)")
+                        : Loc.T("Without name", "Ohne Namen"),
                     $"ohne{kuerzel}", ohneNamenLesen, TitleTemplate.MaxTitleLength,
                     ohneNamenSetzen, mitNamen: false, ersatz: ersatz?.GeneralTemplate, breite);
     }
@@ -783,7 +806,7 @@ public sealed partial class ConfigWindow
         // gezeigt wird stattdessen, was tatsaechlich erscheint.
         if (ersatz is not null && string.IsNullOrWhiteSpace(text))
         {
-            ImGui.TextColored(Theme.Muted, $"uses: {ersatz}");
+            ImGui.TextColored(Theme.Muted, Loc.T($"uses: {ersatz}", $"nutzt: {ersatz}"));
             return;
         }
 
@@ -792,10 +815,10 @@ public sealed partial class ConfigWindow
         // Fassung -, aber wer sie loswird, hat auch die Vorlage wieder im Griff.
         if (TitleTemplate.HasControlCharacters(text))
         {
-            ImGui.TextColored(Theme.Danger, "Contains invisible control characters.");
+            ImGui.TextColored(Theme.Danger, Loc.T("Contains invisible control characters.", "Enthält unsichtbare Steuerzeichen."));
             ImGui.SameLine();
 
-            if (ImGui.SmallButton($"Clean up##{id}"))
+            if (ImGui.SmallButton($"{Loc.T("Clean up", "Bereinigen")}##{id}"))
             {
                 setzen(TitleTemplate.Clean(text));
                 save();
@@ -809,7 +832,7 @@ public sealed partial class ConfigWindow
             // Ohne Namen ist die Grenze hart - hier gibt es keinen Rueckfall mehr.
             var zuLang = benutzt > grenze;
             ImGui.TextColored(zuLang ? Theme.Danger : Theme.Muted,
-                zuLang ? $"{benutzt} / {grenze}  too long, Honorific will not show it" : $"{benutzt} / {grenze}");
+                zuLang ? Loc.T($"{benutzt} / {grenze}  too long, Honorific will not show it", $"{benutzt} / {grenze}  zu lang, Honorific zeigt ihn nicht an") : $"{benutzt} / {grenze}");
             return;
         }
 
@@ -817,17 +840,19 @@ public sealed partial class ConfigWindow
 
         if (maxName >= 15)
         {
-            ImGui.TextColored(Theme.Muted, $"{benutzt} / {grenze}  fits any name");
+            ImGui.TextColored(Theme.Muted, Loc.T($"{benutzt} / {grenze}  fits any name", $"{benutzt} / {grenze}  passt für jeden Namen"));
         }
         else if (maxName > 0)
         {
             ImGui.TextColored(Theme.Warning,
-                $"{benutzt} / {grenze}  fits names up to {maxName} characters; longer names use the template below");
+                Loc.T($"{benutzt} / {grenze}  fits names up to {maxName} characters; longer names use the template below",
+                      $"{benutzt} / {grenze}  passt für Namen bis {maxName} Zeichen; längere Namen nutzen die Vorlage darunter"));
         }
         else
         {
             ImGui.TextColored(Theme.Danger,
-                $"{benutzt} / {grenze}  too long for any name; the template below is always used");
+                Loc.T($"{benutzt} / {grenze}  too long for any name; the template below is always used",
+                      $"{benutzt} / {grenze}  zu lang für jeden Namen; es gilt immer die Vorlage darunter"));
         }
     }
 
@@ -838,22 +863,23 @@ public sealed partial class ConfigWindow
     private static readonly Stil[] Stile = [Stil.Pulse, Stil.Wave, Stil.Static];
 
     /// <summary>Text- und Glow-Farbe, so gewählt, dass sie auf hellem wie dunklem Grund lesbar bleiben.</summary>
-    private static readonly (string Name, Vector3 Text, Vector3 Glow)[] Farbvorlagen =
+    private static readonly (LocText Name, Vector3 Text, Vector3 Glow)[] Farbvorlagen =
     [
-        ("Rose", new(1.00f, 0.55f, 0.75f), new(0.85f, 0.10f, 0.45f)),
-        ("Sakura", new(1.00f, 0.85f, 0.90f), new(0.95f, 0.45f, 0.65f)),
-        ("Gold", new(1.00f, 0.85f, 0.35f), new(0.75f, 0.45f, 0.00f)),
-        ("Sky", new(0.60f, 0.85f, 1.00f), new(0.15f, 0.45f, 0.85f)),
-        ("Mint", new(0.65f, 1.00f, 0.80f), new(0.10f, 0.60f, 0.40f)),
-        ("Lavender", new(0.80f, 0.70f, 1.00f), new(0.45f, 0.30f, 0.85f)),
+        (new("Rose", "Rose"), new(1.00f, 0.55f, 0.75f), new(0.85f, 0.10f, 0.45f)),
+        (new("Sakura", "Sakura"), new(1.00f, 0.85f, 0.90f), new(0.95f, 0.45f, 0.65f)),
+        (new("Gold", "Gold"), new(1.00f, 0.85f, 0.35f), new(0.75f, 0.45f, 0.00f)),
+        (new("Sky", "Himmel"), new(0.60f, 0.85f, 1.00f), new(0.15f, 0.45f, 0.85f)),
+        (new("Mint", "Minze"), new(0.65f, 1.00f, 0.80f), new(0.10f, 0.60f, 0.40f)),
+        (new("Lavender", "Lavendel"), new(0.80f, 0.70f, 1.00f), new(0.45f, 0.30f, 0.85f)),
     ];
 
     private void DrawFarben(Rule regel)
     {
-        Abschnitt("Colours", null, breite =>
+        Abschnitt(Loc.T("Colours", "Farben"), null, breite =>
         {
             var eigene = regel.UseColours;
-            if (Widgets.ToggleRow("Use own colours", ref eigene, breite, "Off: the game's default title styling is used."))
+            if (Widgets.ToggleRow(Loc.T("Use own colours", "Eigene Farben nutzen"), ref eigene, breite,
+                    Loc.T("Off: the game's default title styling is used.", "Aus: Es gilt die Standarddarstellung des Spiels für Titel.")))
             {
                 regel.UseColours = eigene;
                 save();
@@ -883,7 +909,7 @@ public sealed partial class ConfigWindow
             ImGui.Spacing();
 
             var verlauf = regel.UseGradient;
-            if (Widgets.ToggleRow("Gradient", ref verlauf, breite))
+            if (Widgets.ToggleRow(Loc.T("Gradient", "Verlauf"), ref verlauf, breite))
             {
                 regel.UseGradient = verlauf;
                 save();
@@ -896,7 +922,7 @@ public sealed partial class ConfigWindow
 
             var farbe3 = new Vector3(regel.Colour3R, regel.Colour3G, regel.Colour3B);
             ImGui.SetNextItemWidth(Widgets.S(220));
-            if (ImGui.ColorEdit3("Second colour", ref farbe3))
+            if (ImGui.ColorEdit3(Loc.T("Second colour", "Zweite Farbe"), ref farbe3))
             {
                 (regel.Colour3R, regel.Colour3G, regel.Colour3B) = (farbe3.X, farbe3.Y, farbe3.Z);
                 save();
@@ -912,7 +938,7 @@ public sealed partial class ConfigWindow
             }
         });
 
-        Abschnitt("Presets", null, _ =>
+        Abschnitt(Loc.T("Presets", "Vorgaben"), null, _ =>
         {
             var durchmesser = Widgets.S(28);
             var erste = true;
@@ -928,15 +954,15 @@ public sealed partial class ConfigWindow
                 }
             }
 
-            ImGui.TextColored(Theme.Muted, "Sets text and glow colour; the gradient stays as it is.");
+            ImGui.TextColored(Theme.Muted, Loc.T("Sets text and glow colour; the gradient stays as it is.", "Setzt Text- und Glow-Farbe; der Verlauf bleibt, wie er ist."));
         });
     }
 
     /// <summary>Rundes Feld in der Textfarbe mit einem Ring in der Glow-Farbe.</summary>
-    private static bool Farbfeld(string name, Vector3 text, Vector3 glow, float durchmesser)
+    private static bool Farbfeld(LocText name, Vector3 text, Vector3 glow, float durchmesser)
     {
         var pos = ImGui.GetCursorScreenPos();
-        var geklickt = ImGui.InvisibleButton($"##farbe{name}", new Vector2(durchmesser, durchmesser));
+        var geklickt = ImGui.InvisibleButton($"##farbe{name.En}", new Vector2(durchmesser, durchmesser));
         var hovered = ImGui.IsItemHovered();
         var mitte = pos + new Vector2(durchmesser / 2);
         var radius = durchmesser / 2 - 1;
@@ -948,7 +974,7 @@ public sealed partial class ConfigWindow
             draw.AddCircle(mitte, radius + 1.5f, Theme.U32(Theme.AccentLight), 0, 1f);
 
         if (hovered)
-            ImGui.SetTooltip(name);
+            ImGui.SetTooltip(name.ToString());
 
         return geklickt;
     }
@@ -956,8 +982,8 @@ public sealed partial class ConfigWindow
     /// <summary>Die Reihenfolge stammt aus Honorific: 0 Pulse, 1 Wave, 2 Static.</summary>
     private static string Verlaufsname(int stil) => stil switch
     {
-        0 => "Pulse",
-        1 => "Wave",
-        _ => "Static",
+        0 => Loc.T("Pulse", "Pulsieren"),
+        1 => Loc.T("Wave", "Welle"),
+        _ => Loc.T("Static", "Statisch"),
     };
 }

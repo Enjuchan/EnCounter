@@ -31,6 +31,9 @@ public sealed class Configuration : IPluginConfiguration
     /// </summary>
     public bool Paused { get; set; }
 
+    /// <summary>Gewählte Sprache ("de" oder "en"); null heißt wie Dalamud.</summary>
+    public string? Language { get; set; }
+
     public List<CounterEntry> Counters { get; set; } = [];
 
     public sealed class CounterEntry
@@ -212,13 +215,13 @@ public sealed class Configuration : IPluginConfiguration
         // Nummern aus der Emote-Tabelle des Spiels, nicht geraten: Der Emote mit der
         // Nummer 105 heisst „Pet", sein Textbefehl ist /stroke. Umarmt wird auf zwei
         // Arten - 112 ist /hug, 113 ist /embrace; beide zaehlen als Umarmung.
-        Rules.Add(EmoteRegel("Hug", [112, 113], "hugged"));
-        Rules.Add(EmoteRegel("Dote", [146], "doted"));
-        Rules.Add(EmoteRegel("Pet", [105], "petted"));
+        Rules.Add(EmoteRegel(Loc.T("Hug", "Umarmung"), [112, 113], Loc.T("hugged", "umarmt")));
+        Rules.Add(EmoteRegel(Loc.T("Dote", "Verehrung"), [146], Loc.T("doted", "verehrt")));
+        Rules.Add(EmoteRegel(Loc.T("Pet", "Streicheln"), [105], Loc.T("petted", "streichelt")));
 
         Rules.Add(Neu(new Rule
         {
-            Name = "Love",
+            Name = Loc.T("Love", "Liebe"),
             Enabled = true,
 
             // Ueberall, wo Menschen miteinander reden. Alliance und Novice Network
@@ -229,13 +232,13 @@ public sealed class Configuration : IPluginConfiguration
                 ChatChannel.TellIncoming, ChatChannel.Party, ChatChannel.CrossParty,
                 ChatChannel.FreeCompany,
             ],
-            TriggerTexts = ["love you", "<3"],
+            TriggerTexts = Loc.Current == EnCounter.Language.German ? ["liebe dich", "hab dich lieb", "<3"] : ["love you", "<3"],
 
             // Sonst zaehlt jedes Gespraech in Hoerweite mit. Im Tell greift die
             // Bedingung ohnehin nicht - dort ist die Nachricht an einen gerichtet.
             RequiresOwnName = true,
-            PersonalTemplate = "[Name] loves me [Count]x",
-            GeneralTemplate = "got love [Count]x",
+            PersonalTemplate = Loc.T("[Name] loves me [Count]x", "[Name] liebt mich [Count]x"),
+            GeneralTemplate = Loc.T("got love [Count]x", "[Count]x geliebt"),
             DisplaySeconds = 10,
         }));
 
@@ -251,13 +254,13 @@ public sealed class Configuration : IPluginConfiguration
             EmoteIds = [.. emoteIds],
             TriggerTexts = [],
             RequiresOwnName = false,
-            PersonalTemplate = $"[Name] {verb} me [Count]x",
+            PersonalTemplate = Loc.T($"[Name] {verb} me [Count]x", $"[Name] {verb} [Count]x"),
             GeneralTemplate = $"{verb} [Count]x",
 
             // Fuer den Fall, dass jemand auf "beides" umstellt: Dann steht schon da,
             // was sonst verkehrt herum erschiene.
             GivenPersonalTemplate = $"{verb} [Name] [Count]x",
-            GivenGeneralTemplate = $"{verb} others [Count]x",
+            GivenGeneralTemplate = Loc.T($"{verb} others [Count]x", $"{verb} andere [Count]x"),
             DisplaySeconds = 10,
         });
 

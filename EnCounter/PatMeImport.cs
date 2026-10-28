@@ -49,7 +49,7 @@ public static class PatMeImport
         List<Stand> Staende,
         List<Charakter> Charaktere,
         ulong EigeneCid,
-        List<string> Hinweise,
+        List<LocText> Hinweise,
         bool HonorificGefunden,
         bool PatMeGefunden)
     {
@@ -107,7 +107,7 @@ public static class PatMeImport
 
     public static Fund Lesen(string konfigOrdner, ulong eigeneCid)
     {
-        var hinweise = new List<string>();
+        var hinweise = new List<LocText>();
 
         var honorificDatei = Path.Combine(konfigOrdner, "PatMeHonorific.json");
         var patMeDatei = Path.Combine(konfigOrdner, "PatMe.json");
@@ -118,9 +118,11 @@ public static class PatMeImport
         LiesHonorific(honorificDatei, staende, hinweise);
 
         if (staende.Count > 0 && eigeneCid == 0)
-            hinweise.Add("Not logged in - the current character cannot be told apart.");
+            hinweise.Add(new("Not logged in - the current character cannot be told apart.",
+                             "Nicht eingeloggt - der aktuelle Charakter lässt sich nicht erkennen."));
         else if (staende.Count > 0 && staende.All(s => s.Cid != eigeneCid))
-            hinweise.Add("Neither plugin has counts for the character you are playing.");
+            hinweise.Add(new("Neither plugin has counts for the character you are playing.",
+                             "Keines der Plugins hat Zähler für den Charakter, den du spielst."));
 
         return new Fund(staende, charaktere, eigeneCid, hinweise,
                         File.Exists(honorificDatei), File.Exists(patMeDatei));
@@ -150,7 +152,7 @@ public static class PatMeImport
 
     // ----------------------------------------------------------------- PatMe
 
-    private static List<Charakter> LiesPatMe(string pfad, List<Stand> staende, List<string> hinweise)
+    private static List<Charakter> LiesPatMe(string pfad, List<Stand> staende, List<LocText> hinweise)
     {
         var charaktere = new List<Charakter>();
 
@@ -193,11 +195,12 @@ public static class PatMeImport
             }
 
             foreach (var k in unbekannt)
-                hinweise.Add($"PatMe counter \"{k}\" has no known emote here and was skipped.");
+                hinweise.Add(new($"PatMe counter \"{k}\" has no known emote here and was skipped.",
+                                 $"PatMe-Zähler \"{k}\" passt zu keinem bekannten Emote und wurde übersprungen."));
         }
         catch (Exception e)
         {
-            hinweise.Add($"PatMe.json could not be read: {e.GetType().Name}");
+            hinweise.Add(new($"PatMe.json could not be read: {e.GetType().Name}", $"PatMe.json konnte nicht gelesen werden: {e.GetType().Name}"));
         }
 
         return charaktere;
@@ -212,7 +215,7 @@ public static class PatMeImport
     /// Die Liste bleibt leer, solange das Plugin deaktiviert ist; es zählt erst, wenn
     /// es läuft.
     /// </summary>
-    private static void LiesHonorific(string pfad, List<Stand> staende, List<string> hinweise)
+    private static void LiesHonorific(string pfad, List<Stand> staende, List<LocText> hinweise)
     {
         if (!File.Exists(pfad))
             return;
@@ -243,7 +246,7 @@ public static class PatMeImport
         }
         catch (Exception e)
         {
-            hinweise.Add($"PatMeHonorific.json could not be read: {e.GetType().Name}");
+            hinweise.Add(new($"PatMeHonorific.json could not be read: {e.GetType().Name}", $"PatMeHonorific.json konnte nicht gelesen werden: {e.GetType().Name}"));
         }
     }
 

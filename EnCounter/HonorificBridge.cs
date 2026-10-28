@@ -27,7 +27,7 @@ public sealed class HonorificBridge(IDalamudPluginInterface plugin)
     private readonly ICallGateSubscriber<int, object> clearTitle =
         plugin.GetIpcSubscriber<int, object>("Honorific.ClearCharacterTitle");
 
-    public string? LastError { get; private set; }
+    public LocText? LastError { get; private set; }
 
     /// <summary>Ob Honorific erreichbar ist. Wird bei jedem Aufruf neu geprüft.</summary>
     public bool IsAvailable
@@ -39,12 +39,13 @@ public sealed class HonorificBridge(IDalamudPluginInterface plugin)
                 var (major, _) = apiVersion.InvokeFunc();
                 if (major >= 3) return true;
 
-                LastError = $"Honorific-API {major} ist zu alt, benoetigt wird 3 oder neuer";
+                LastError = new($"Honorific API {major} is too old, version 3 or newer is required",
+                                $"Honorific-API {major} ist zu alt, Version 3 oder neuer wird benötigt");
                 return false;
             }
             catch (Exception e)
             {
-                LastError = "Honorific nicht erreichbar: " + e.GetType().Name;
+                LastError = new($"Honorific is not reachable: {e.GetType().Name}", $"Honorific ist nicht erreichbar: {e.GetType().Name}");
                 return false;
             }
         }
@@ -99,7 +100,7 @@ public sealed class HonorificBridge(IDalamudPluginInterface plugin)
         }
         catch (Exception e)
         {
-            LastError = e.GetType().Name + ": " + e.Message;
+            LastError = new LocText(e.GetType().Name + ": " + e.Message, e.GetType().Name + ": " + e.Message);
         }
     }
 
@@ -112,7 +113,7 @@ public sealed class HonorificBridge(IDalamudPluginInterface plugin)
         }
         catch (Exception e)
         {
-            LastError = e.GetType().Name + ": " + e.Message;
+            LastError = new LocText(e.GetType().Name + ": " + e.Message, e.GetType().Name + ": " + e.Message);
         }
     }
 }

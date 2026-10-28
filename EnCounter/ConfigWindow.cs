@@ -1,6 +1,7 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
+using Dalamud.Interface.Windowing;
 using Dalamud.Plugin.Services;
 using EnCounter.Core;
 using EnCounter.Ui;
@@ -21,47 +22,105 @@ namespace EnCounter;
 /// Die Bindings heißen `Dalamud.Bindings.ImGui`, nicht ImGuiNET - Beispiele aus dem
 /// Netz passen meist nicht.
 /// </summary>
-public sealed partial class ConfigWindow(
-    Configuration config,
-    CounterStore counters,
-    CooldownGate cooldowns,
-    IDataManager data,
-    string konfigOrdner,
-    Func<ulong> eigeneCid,
-    Func<string?> aktuellesZiel,
-    Action save,
-    Func<LastEvent?> letztesEreignis,
-    Func<bool> diagnoseLesen,
-    Action<bool> diagnoseSetzen,
-    HonorificBridge honorific,
-    TitlePresenter presenter,
-    string version,
-    Dependencies dependencies,
-    AboutInfo about,
-    IPluginLog log)
+public sealed partial class ConfigWindow : Window
 {
+    private readonly Configuration config;
+    private readonly CounterStore counters;
+    private readonly CooldownGate cooldowns;
+    private readonly IDataManager data;
+    private readonly string konfigOrdner;
+    private readonly Func<ulong> eigeneCid;
+    private readonly Func<string?> aktuellesZiel;
+    private readonly Action save;
+    private readonly Func<LastEvent?> letztesEreignis;
+    private readonly Func<bool> diagnoseLesen;
+    private readonly Action<bool> diagnoseSetzen;
+    private readonly HonorificBridge honorific;
+    private readonly TitlePresenter presenter;
+    private readonly string version;
+    private readonly Dependencies dependencies;
+    private readonly AboutInfo about;
+    private readonly FrameTiming timing;
+
+    private Theme.Scope? themeScope;
+
+    public ConfigWindow(
+        Configuration config,
+        CounterStore counters,
+        CooldownGate cooldowns,
+        IDataManager data,
+        string konfigOrdner,
+        Func<ulong> eigeneCid,
+        Func<string?> aktuellesZiel,
+        Action save,
+        Func<LastEvent?> letztesEreignis,
+        Func<bool> diagnoseLesen,
+        Action<bool> diagnoseSetzen,
+        HonorificBridge honorific,
+        TitlePresenter presenter,
+        string version,
+        Dependencies dependencies,
+        AboutInfo about,
+        IPluginLog log)
+        // Der Titel bleibt "EnCounter", damit gespeicherte Fensterlage und -größe erhalten bleiben.
+        : base("EnCounter")
+    {
+        this.config = config;
+        this.counters = counters;
+        this.cooldowns = cooldowns;
+        this.data = data;
+        this.konfigOrdner = konfigOrdner;
+        this.eigeneCid = eigeneCid;
+        this.aktuellesZiel = aktuellesZiel;
+        this.save = save;
+        this.letztesEreignis = letztesEreignis;
+        this.diagnoseLesen = diagnoseLesen;
+        this.diagnoseSetzen = diagnoseSetzen;
+        this.honorific = honorific;
+        this.presenter = presenter;
+        this.version = version;
+        this.dependencies = dependencies;
+        this.about = about;
+        timing = new FrameTiming(log, "Draw", TimeSpan.FromSeconds(5), diagnoseLesen);
+
+        Size = new Vector2(860, 620);
+        SizeCondition = ImGuiCond.FirstUseEver;
+        SizeConstraints = new WindowSizeConstraints { MinimumSize = new Vector2(720, 480), MaximumSize = new Vector2(float.MaxValue, float.MaxValue) };
+
+        // Das Fenster war bisher ein einfaches ImGui-Fenster ohne Escape-Schließen, Töne und Einblenden.
+        RespectCloseHotkey = false;
+        DisableWindowSounds = true;
+        DisableFadeInFadeOut = true;
+
+        TitleBarButtons.Add(Loc.CreateButton(code =>
+        {
+            config.Language = code;
+            save();
+        }));
+    }
+
     /// <summary>
     /// Die Kanäle einzeln, in drei Spalten nach Zusammengehörigkeit. Gruppenhäkchen
     /// gab es vorher - sie standen auf „aus", sobald ein Kanal der Gruppe fehlte, und
     /// verschwiegen damit genau das, was sie zeigen sollten.
     /// </summary>
-    private static readonly (string Beschriftung, ChatChannel Kanal)[][] Kanalspalten =
+    private static (string Beschriftung, ChatChannel Kanal)[][] Kanalspalten =>
     [
         [
-            ("Say", ChatChannel.Say),
-            ("Yell", ChatChannel.Yell),
-            ("Shout", ChatChannel.Shout),
-            ("Tell", ChatChannel.TellIncoming),
+            (Loc.T("Say", "Sagen"), ChatChannel.Say),
+            (Loc.T("Yell", "Rufen"), ChatChannel.Yell),
+            (Loc.T("Shout", "Schreien"), ChatChannel.Shout),
+            (Loc.T("Tell", "Flüstern"), ChatChannel.TellIncoming),
         ],
         [
-            ("Party", ChatChannel.Party),
-            ("Alliance", ChatChannel.Alliance),
-            ("Cross-world party", ChatChannel.CrossParty),
-            ("PvP team", ChatChannel.PvpTeam),
+            (Loc.T("Party", "Gruppe"), ChatChannel.Party),
+            (Loc.T("Alliance", "Allianz"), ChatChannel.Alliance),
+            (Loc.T("Cross-world party", "Weltenübergreifende Gruppe"), ChatChannel.CrossParty),
+            (Loc.T("PvP team", "PvP-Team"), ChatChannel.PvpTeam),
         ],
         [
-            ("Free Company", ChatChannel.FreeCompany),
-            ("Novice Network", ChatChannel.NoviceNetwork),
+            (Loc.T("Free Company", "Freie Gesellschaft"), ChatChannel.FreeCompany),
+            (Loc.T("Novice Network", "Neulingskanal"), ChatChannel.NoviceNetwork),
         ],
     ];
 
@@ -82,8 +141,6 @@ public sealed partial class ConfigWindow(
         ChatChannel.StandardEmote, ChatChannel.CustomEmote,
     ];
 
-    public bool Visible;
-
     private int ausgewaehlt;
     private string neuerTrigger = string.Empty;
     private string neuerName = string.Empty;
@@ -98,49 +155,41 @@ public sealed partial class ConfigWindow(
     /// </summary>
     private bool importAlle;
 
-    private static readonly (FontAwesomeIcon Icon, string Label)[] Tabs =
+    private static (FontAwesomeIcon Icon, string Label)[] Tabs() =>
     [
-        (FontAwesomeIcon.ListUl, "Rules"),
-        (FontAwesomeIcon.ChartBar, "Counts"),
-        (FontAwesomeIcon.Cog, "Settings"),
-        (FontAwesomeIcon.PuzzlePiece, "Dependencies"),
-        (FontAwesomeIcon.InfoCircle, "About"),
+        (FontAwesomeIcon.ListUl, Loc.T("Rules", "Regeln")),
+        (FontAwesomeIcon.ChartBar, Loc.T("Counts", "Zähler")),
+        (FontAwesomeIcon.Cog, Loc.T("Settings", "Einstellungen")),
+        (FontAwesomeIcon.PuzzlePiece, Loc.T("Dependencies", "Abhängigkeiten")),
+        (FontAwesomeIcon.InfoCircle, Loc.T("About", "Info")),
     ];
 
     private int tab;
 
-    public void Draw()
-    {
-        if (!Visible)
-            return;
+    // Theme muss vor dem Begin des Fensters gesetzt sein, weil Fensterhintergrund und Titelleiste davon abhängen.
+    public override void PreDraw() => themeScope = Theme.Push();
 
+    public override void PostDraw()
+    {
+        themeScope?.Dispose();
+        themeScope = null;
+    }
+
+    public override void Draw()
+    {
         var started = System.Diagnostics.Stopwatch.GetTimestamp();
         DrawWindow();
         timing.Add(System.Diagnostics.Stopwatch.GetElapsedTime(started));
     }
 
-    private readonly FrameTiming timing = new(log, "Draw", TimeSpan.FromSeconds(5), diagnoseLesen);
-
     private void DrawWindow()
     {
-        using var theme = Theme.Push();
-
-        ImGui.SetNextWindowSize(new(860, 620), ImGuiCond.FirstUseEver);
-        ImGui.SetNextWindowSizeConstraints(new Vector2(720, 480), new Vector2(float.MaxValue, float.MaxValue));
-
-        // Der Titel bleibt "EnCounter", damit gespeicherte Fensterlage und -größe erhalten bleiben.
-        if (!ImGui.Begin("EnCounter", ref Visible))
-        {
-            ImGui.End();
-            return;
-        }
-
         Decor.Background();
         Decor.HeaderBand(ImGui.GetFrameHeight() + ImGui.GetStyle().ItemSpacing.Y + ImGui.GetTextLineHeight());
         DrawKopf();
         ImGui.Dummy(new Vector2(0, 6));
 
-        Widgets.PillTabs("tabs", Tabs, ref tab);
+        Widgets.PillTabs("tabs", Tabs(), ref tab);
         ImGui.Dummy(new Vector2(0, 8));
 
         // Die Staende stehen in einem eigenen Tab, nicht in jeder Regel: Sie gehoeren dem
@@ -163,8 +212,6 @@ public sealed partial class ConfigWindow(
                 AboutView.Draw(about);
                 break;
         }
-
-        ImGui.End();
     }
 
     private void DrawKopf()
@@ -206,15 +253,17 @@ public sealed partial class ConfigWindow(
         var marken = new List<(string Text, Vector4 Punkt, string Tooltip)>();
 
         if (presenter.IsShowing)
-            marken.Add(($"Showing · {presenter.CurrentText} · {Math.Ceiling(presenter.Remaining.TotalSeconds)} s", Theme.Accent,
-                "The title above your name right now."));
+            marken.Add(($"{Loc.T("Showing", "Zeigt")} · {presenter.CurrentText} · {Math.Ceiling(presenter.Remaining.TotalSeconds)} s", Theme.Accent,
+                Loc.T("The title above your name right now.", "Der Titel, der gerade über deinem Namen steht.")));
 
         if (config.Paused)
-            marken.Add(("Paused", Theme.Warning, "Counting is paused. Turn it back on in Settings."));
+            marken.Add((Loc.T("Paused", "Pausiert"), Theme.Warning,
+                Loc.T("Counting is paused. Turn it back on in Settings.", "Zählen ist pausiert. Schalte es in den Einstellungen wieder ein.")));
 
         var da = HonorificDa();
         marken.Add(("Honorific", da ? Theme.Success : Theme.Danger,
-            da ? "Honorific is loaded. Titles are shown and synced." : $"Titles can't be shown: {honorific.LastError}"));
+            da ? Loc.T("Honorific is loaded. Titles are shown and synced.", "Honorific ist geladen. Titel werden angezeigt und synchronisiert.")
+               : Loc.T($"Titles can't be shown: {honorific.LastError}", $"Titel können nicht angezeigt werden: {honorific.LastError}")));
 
         var abstand = ImGui.GetStyle().ItemSpacing.X;
         var breite = marken.Sum(m => Widgets.PillWidth(m.Text, true)) + abstand * (marken.Count - 1);
@@ -238,18 +287,18 @@ public sealed partial class ConfigWindow(
 
         if (config.Paused)
         {
-            text = "Paused - nothing is counted.";
+            text = Loc.T("Paused - nothing is counted.", "Pausiert - es wird nichts gezählt.");
             farbe = Theme.Warning;
         }
         else if (letztesEreignis() is not { } e)
         {
-            text = "Nothing counted since the plugin started.";
+            text = Loc.T("Nothing counted since the plugin started.", "Seit dem Start des Plugins wurde nichts gezählt.");
         }
         else
         {
             // Gespeichert ist Name@Welt, angezeigt wird wie im Titel nur der Vorname.
             var vorname = e.Person.Split('@')[0].Split(' ')[0];
-            text = $"Last: {vorname} · {e.EventName} · {e.Count} · {Vor(DateTime.UtcNow - e.Time)} · {e.RuleName}";
+            text = $"{Loc.T("Last", "Zuletzt")}: {vorname} · {e.EventName} · {e.Count} · {Vor(DateTime.UtcNow - e.Time)} · {e.RuleName}";
         }
 
         var start = ImGui.GetCursorPosX();
@@ -266,9 +315,9 @@ public sealed partial class ConfigWindow(
     }
 
     private static string Vor(TimeSpan dauer) =>
-        dauer.TotalSeconds < 60 ? $"{(int)dauer.TotalSeconds} s ago"
-        : dauer.TotalMinutes < 60 ? $"{(int)dauer.TotalMinutes} min ago"
-        : $"{(int)dauer.TotalHours} h ago";
+        dauer.TotalSeconds < 60 ? Loc.T($"{(int)dauer.TotalSeconds} s ago", $"vor {(int)dauer.TotalSeconds} s")
+        : dauer.TotalMinutes < 60 ? Loc.T($"{(int)dauer.TotalMinutes} min ago", $"vor {(int)dauer.TotalMinutes} min")
+        : Loc.T($"{(int)dauer.TotalHours} h ago", $"vor {(int)dauer.TotalHours} h");
 
     private int? importErgebnis;
 

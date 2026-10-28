@@ -20,7 +20,7 @@ public sealed partial class ConfigWindow
         if (Gewaehlt is { } regel)
             DrawEditor(regel);
         else
-            ImGui.TextColored(Theme.Muted, "No rule selected. Create one with New rule.");
+            ImGui.TextColored(Theme.Muted, Loc.T("No rule selected. Create one with New rule.", "Keine Regel ausgewählt. Lege mit dem Knopf Neue Regel eine an."));
 
         ImGui.EndChild();
     }
@@ -89,12 +89,14 @@ public sealed partial class ConfigWindow
 
         // Chat kennt keine Richtung - dort wäre „received" nur Ballast.
         if (!IstEmoteRegel(regel))
-            return $"{empfangen} counted · chat";
+            return Loc.T($"{empfangen} counted · chat", $"{empfangen} gezählt · Chat");
 
         if (empfangen >= 0 && gegeben >= 0)
-            return $"{empfangen} received · {gegeben} given";
+            return Loc.T($"{empfangen} received · {gegeben} given", $"{empfangen} empfangen · {gegeben} gegeben");
 
-        return empfangen >= 0 ? $"{empfangen} received" : $"{gegeben} given";
+        return empfangen >= 0
+            ? Loc.T($"{empfangen} received", $"{empfangen} empfangen")
+            : Loc.T($"{gegeben} given", $"{gegeben} gegeben");
     }
 
     private void Tausche(int a, int b)
@@ -108,12 +110,12 @@ public sealed partial class ConfigWindow
 
     private void DrawLinkeSpalte()
     {
-        ImGui.BeginChild("rules", new Vector2(Widgets.S(260), 0));
+        ImGui.BeginChild("rules", new Vector2(Widgets.S(280), 0));
 
-        Widgets.SectionHeader($"Rules · {config.Rules.Count}");
-        if (Widgets.PrimaryButton("New rule", FontAwesomeIcon.Plus))
+        Widgets.SectionHeader($"{Loc.T("Rules", "Regeln")} · {config.Rules.Count}");
+        if (Widgets.PrimaryButton(Loc.T("New rule", "Neue Regel"), FontAwesomeIcon.Plus))
         {
-            var neu = new Rule { Name = $"Rule {config.Rules.Count + 1}" };
+            var neu = new Rule { Name = Loc.T($"Rule {config.Rules.Count + 1}", $"Regel {config.Rules.Count + 1}") };
             neu.EnsureId();
             config.Rules.Add(neu);
             ausgewaehlt = config.Rules.Count - 1;
@@ -173,7 +175,7 @@ public sealed partial class ConfigWindow
                 ImGui.SetCursorScreenPos(new Vector2(rechts - artBreite - warnBreite, start.Y));
                 Widgets.Icon(FontAwesomeIcon.ExclamationTriangle, schlimmste == HealthSeverity.Blockierend ? Theme.Danger : Theme.Warning);
                 if (ImGui.IsItemHovered())
-                    ImGui.SetTooltip(string.Join("\n", befunde.Where(b => b.Severity >= HealthSeverity.Warnung).Select(b => b.Message)));
+                    ImGui.SetTooltip(string.Join("\n", befunde.Where(b => b.Severity >= HealthSeverity.Warnung).Select(b => Loc.T(b.Message, b.MessageDe))));
             }
 
             ImGui.SetCursorScreenPos(new Vector2(rechts - artBreite, start.Y - 2));
@@ -197,14 +199,14 @@ public sealed partial class ConfigWindow
 
         var name = regel.Name;
         ImGui.SetNextItemWidth(-knoepfe);
-        if (ImGui.InputTextWithHint("##name", "Rule name", ref name, 64))
+        if (ImGui.InputTextWithHint("##name", Loc.T("Rule name", "Regelname"), ref name, 64))
         {
             regel.Name = name;
             save();
         }
 
         // Bei gleich genauen Regeln entscheidet die Reihenfolge, welche den Titel stellt.
-        const string reihenfolge = "Among equally specific rules, the upper one shows its title.";
+        var reihenfolge = Loc.T("Among equally specific rules, the upper one shows its title.", "Bei gleich genauen Regeln zeigt die obere ihren Titel.");
         var kannHoch = ausgewaehlt > 0;
         var kannRunter = ausgewaehlt < config.Rules.Count - 1;
 
@@ -213,19 +215,19 @@ public sealed partial class ConfigWindow
         var hoch = Widgets.IconButton("up", FontAwesomeIcon.ArrowUp);
         ImGui.EndDisabled();
         if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-            ImGui.SetTooltip($"Move up. {reihenfolge}");
+            ImGui.SetTooltip($"{Loc.T("Move up.", "Nach oben.")} {reihenfolge}");
 
         ImGui.SameLine();
         ImGui.BeginDisabled(!kannRunter);
         var runter = Widgets.IconButton("down", FontAwesomeIcon.ArrowDown);
         ImGui.EndDisabled();
         if (ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
-            ImGui.SetTooltip($"Move down. {reihenfolge}");
+            ImGui.SetTooltip($"{Loc.T("Move down.", "Nach unten.")} {reihenfolge}");
 
         ImGui.SameLine();
-        if (Widgets.IconButton("dup", FontAwesomeIcon.Copy, "Duplicate: same settings, own counter, starting at zero."))
+        if (Widgets.IconButton("dup", FontAwesomeIcon.Copy, Loc.T("Duplicate: same settings, own counter, starting at zero.", "Duplizieren: gleiche Einstellungen, eigener Zähler, der bei null beginnt.")))
         {
-            config.Rules.Insert(ausgewaehlt + 1, regel.Copy($"{regel.Name} (copy)"));
+            config.Rules.Insert(ausgewaehlt + 1, regel.Copy($"{regel.Name} {Loc.T("(copy)", "(Kopie)")}"));
             ausgewaehlt++;
             save();
             return;
@@ -235,7 +237,7 @@ public sealed partial class ConfigWindow
 
         // Löschen verlangt Shift: Eine Regel ist schnell weg, und ein Fehlklick kostet alle Einstellungen darin.
         // Der Zähler bleibt, er gehört dem Ereignis; eine neue Regel findet ihren Stand wieder vor.
-        if (Widgets.ShiftButton("del", FontAwesomeIcon.Trash, "delete this rule"))
+        if (Widgets.ShiftButton("del", FontAwesomeIcon.Trash, new("delete this rule", "diese Regel zu löschen")))
         {
             config.Rules.RemoveAt(ausgewaehlt);
             ausgewaehlt = Math.Min(ausgewaehlt, config.Rules.Count - 1);
