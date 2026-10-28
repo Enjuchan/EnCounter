@@ -35,7 +35,10 @@ public sealed partial class ConfigWindow(
     Action<bool> diagnoseSetzen,
     HonorificBridge honorific,
     TitlePresenter presenter,
-    string version)
+    string version,
+    Dependencies dependencies,
+    AboutInfo about,
+    IPluginLog log)
 {
     /// <summary>
     /// Die Kanäle einzeln, in drei Spalten nach Zusammengehörigkeit. Gruppenhäkchen
@@ -100,6 +103,8 @@ public sealed partial class ConfigWindow(
         (FontAwesomeIcon.ListUl, "Rules"),
         (FontAwesomeIcon.ChartBar, "Counts"),
         (FontAwesomeIcon.Cog, "Settings"),
+        (FontAwesomeIcon.PuzzlePiece, "Dependencies"),
+        (FontAwesomeIcon.InfoCircle, "About"),
     ];
 
     private int tab;
@@ -109,6 +114,15 @@ public sealed partial class ConfigWindow(
         if (!Visible)
             return;
 
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        DrawWindow();
+        timing.Add(System.Diagnostics.Stopwatch.GetElapsedTime(started));
+    }
+
+    private readonly FrameTiming timing = new(log, "Draw", TimeSpan.FromSeconds(5), diagnoseLesen);
+
+    private void DrawWindow()
+    {
         using var theme = Theme.Push();
 
         ImGui.SetNextWindowSize(new(860, 620), ImGuiCond.FirstUseEver);
@@ -139,8 +153,14 @@ public sealed partial class ConfigWindow(
             case 1:
                 DrawGlobaleZaehler();
                 break;
-            default:
+            case 2:
                 DrawEinstellungen();
+                break;
+            case 3:
+                DependenciesView.Draw(dependencies);
+                break;
+            default:
+                AboutView.Draw(about);
                 break;
         }
 
@@ -213,21 +233,36 @@ public sealed partial class ConfigWindow(
 
     private void DrawStatuszeile()
     {
+        string text;
+        var farbe = Theme.Muted;
+
         if (config.Paused)
         {
-            ImGui.TextColored(Theme.Warning, "Paused - nothing is counted.");
-            return;
+            text = "Paused - nothing is counted.";
+            farbe = Theme.Warning;
         }
-
-        if (letztesEreignis() is not { } e)
+        else if (letztesEreignis() is not { } e)
         {
-            ImGui.TextColored(Theme.Muted, "Nothing counted since the plugin started.");
-            return;
+            text = "Nothing counted since the plugin started.";
+        }
+        else
+        {
+            // Gespeichert ist Name@Welt, angezeigt wird wie im Titel nur der Vorname.
+            var vorname = e.Person.Split('@')[0].Split(' ')[0];
+            text = $"Last: {vorname} · {e.EventName} · {e.Count} · {Vor(DateTime.UtcNow - e.Time)} · {e.RuleName}";
         }
 
-        // Gespeichert ist Name@Welt, angezeigt wird wie im Titel nur der Vorname.
-        var vorname = e.Person.Split('@')[0].Split(' ')[0];
-        ImGui.TextColored(Theme.Muted, $"Last: {vorname} · {e.EventName} · {e.Count} · {Vor(DateTime.UtcNow - e.Time)} · {e.RuleName}");
+        var start = ImGui.GetCursorPosX();
+        ImGui.TextColored(farbe, text);
+
+        if (diagnoseLesen())
+        {
+            // Rechtsbündig, aber nie über den Statustext hinweg.
+            var zeit = timing.Summary();
+            ImGui.SameLine(Math.Max(start + ImGui.CalcTextSize(text).X + ImGui.GetStyle().ItemSpacing.X * 2,
+                ImGui.GetContentRegionMax().X - ImGui.CalcTextSize(zeit).X));
+            ImGui.TextColored(Theme.Muted, zeit);
+        }
     }
 
     private static string Vor(TimeSpan dauer) =>

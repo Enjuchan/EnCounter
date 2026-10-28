@@ -1,6 +1,8 @@
 {
   "Name": "EnCounter",
   "Author": "Enjuchan",
+  "RepoUrl": "https://github.com/Enjuchan/EnCounter",
+  "IconUrl": "https://raw.githubusercontent.com/Enjuchan/EnCounter/main/EnCounter/images/icon.png",
   "Punchline": "Counts what others do to you and shows it above your head.",
   "Description": "Counts emotes and chat messages directed at you and briefly displays the tally as your title.\n\nRequires Honorific. Counts are stored locally per player and never leave your machine.",
   "ApplicableVersion": "any",

@@ -1,3 +1,4 @@
+using Dalamud.Game.ClientState.Conditions;
 using Dalamud.IoC;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
@@ -18,6 +19,7 @@ public sealed class Plugin : IDalamudPlugin
     [PluginService] internal static IDataManager Data { get; private set; } = null!;
     [PluginService] internal static ITargetManager Targets { get; private set; } = null!;
     [PluginService] internal static ITextureProvider Textures { get; private set; } = null!;
+    [PluginService] internal static ICondition Condition { get; private set; } = null!;
 
     private readonly Configuration config;
     private readonly CounterStore counters;
@@ -56,6 +58,9 @@ public sealed class Plugin : IDalamudPlugin
 
     public Plugin()
     {
+        // ECommons braucht das für DalamudReflector, das der Dependencies-Tab zum Installieren nutzt.
+        ECommons.ECommonsMain.Init(PluginInterface, this);
+
         config = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
 
         // Reihenfolge zaehlt: Erst Regeln anlegen, damit auch die frischen eine Id
@@ -86,6 +91,7 @@ public sealed class Plugin : IDalamudPlugin
 
         // Die ContentId trennt die eigenen Charaktere - PatMe fuehrt seine Staende so.
         Ui.Widgets.Init(Textures);
+        var version = PluginInterface.Manifest.AssemblyVersion.ToString(3);
         window = new ConfigWindow(config, counters, cooldowns, Data, konfigOrdner,
                                   () => PlayerState.IsLoaded ? PlayerState.ContentId : 0ul,
                                   AktuellesZiel,
@@ -95,9 +101,12 @@ public sealed class Plugin : IDalamudPlugin
                                   SetzeDiagnose,
                                   honorific,
                                   presenter,
-                                  PluginInterface.Manifest.AssemblyVersion.ToString(3));
+                                  version,
+                                  new Dependencies(PluginInterface, Log, EnCounterDependencies.Groups),
+                                  EnCounterAbout.Create(version),
+                                  Log);
 
-        PluginInterface.UiBuilder.Draw += window.Draw;
+        PluginInterface.UiBuilder.Draw += Draw;
 
         // Dalamud kennt zwei Einstiege: das Zahnrad fuer Einstellungen und den Knopf
         // fuer das Hauptfenster. Bei EnCounter ist beides dasselbe - die
@@ -108,7 +117,7 @@ public sealed class Plugin : IDalamudPlugin
 
         Commands.AddHandler("/encounter", new Dalamud.Game.Command.CommandInfo(AufBefehl)
         {
-            HelpMessage = "Opens the EnCounter settings. /encounter debug logs how emotes are processed.",
+            HelpMessage = $"{EnCounterAbout.ToggleEffect} /encounter debug turns diagnostics on or off.",
         });
 
         Framework.Update += Tick;
@@ -365,6 +374,17 @@ public sealed class Plugin : IDalamudPlugin
         return (string.Empty, 0u);
     }
 
+    private void Draw()
+    {
+        // Im Ladebildschirm wird nichts gezeichnet. Visible bleibt unberührt, damit das Fenster danach von selbst wiederkommt.
+        // Eine Prüfung auf den Login fehlt mit Absicht: Das Fenster ist zugleich das Einstellungsfenster und soll
+        // vom Titelbildschirm aus über den Plugin-Installer erreichbar sein.
+        if (Condition[ConditionFlag.BetweenAreas] || Condition[ConditionFlag.BetweenAreas51])
+            return;
+
+        window.Draw();
+    }
+
     private void Oeffnen() => window.Visible = !window.Visible;
 
     private void AufBefehl(string _, string argumente)
@@ -415,7 +435,7 @@ public sealed class Plugin : IDalamudPlugin
     public void Dispose()
     {
         Commands.RemoveHandler("/encounter");
-        PluginInterface.UiBuilder.Draw -= window.Draw;
+        PluginInterface.UiBuilder.Draw -= Draw;
         PluginInterface.UiBuilder.OpenConfigUi -= Oeffnen;
         PluginInterface.UiBuilder.OpenMainUi -= Oeffnen;
 
@@ -429,5 +449,6 @@ public sealed class Plugin : IDalamudPlugin
 
         // Beim Abschalten immer schreiben, egal wie kurz der letzte Puls her ist.
         SpeichereJetzt();
+        ECommons.ECommonsMain.Dispose();
     }
 }

@@ -25,20 +25,14 @@ public sealed partial class ConfigWindow
 
             var diagnose = diagnoseLesen();
             if (Widgets.ToggleRow("Diagnostics", ref diagnose, breite,
-                    "Writes every step of emote and rule processing to the log and to chat."))
+                    "Writes every step of emote and rule processing to the log and to chat. Also shows the draw time of this window in the status line and logs it every 10 seconds."))
                 diagnoseSetzen(diagnose);
         });
 
         DrawImport();
 
-        Abschnitt("About", null, breite =>
-        {
-            Umbruch(Theme.Muted, "The list of names and all counters are stored on this computer only.", breite);
-            ImGui.Spacing();
-
-            if (ImGui.Button("Open GitHub"))
-                Dalamud.Utility.Util.OpenLink("https://github.com/Enjuchan/EnCounter");
-        });
+        Abschnitt("Privacy", null, breite =>
+            Umbruch(Theme.Muted, "The list of names and all counters are stored on this computer only.", breite));
     }
 
     private static void Umbruch(Vector4 farbe, string text, float breite)

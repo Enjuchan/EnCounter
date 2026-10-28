@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
@@ -217,6 +219,66 @@ public static class Widgets
 
         ImGui.SetCursorScreenPos(start);
         ImGui.Dummy(new Vector2(x - start.X, height));
+        return changed;
+    }
+
+    /// <summary>
+    /// Wie <see cref="PillTabs"/>, aber nur mit Icon; die Bezeichnung steht im Tooltip. Für die Kompaktansicht.
+    /// </summary>
+    public static bool IconTabs(string id, IReadOnlyList<(FontAwesomeIcon Icon, string Tooltip)> tabs, ref int selected)
+    {
+        var draw = ImGui.GetWindowDrawList();
+        var start = ImGui.GetCursorScreenPos();
+        var height = ImGui.GetFrameHeight();
+        var gap = ImGui.GetStyle().ItemSpacing.X;
+        var x = start.X;
+        var changed = false;
+
+        for (var i = 0; i < tabs.Count; i++)
+        {
+            var (icon, tooltip) = tabs[i];
+            var iconText = icon.ToIconString();
+
+            ImGui.PushFont(UiBuilder.IconFont);
+            var iconSize = ImGui.CalcTextSize(iconText);
+            ImGui.PopFont();
+
+            var size = new Vector2(iconSize.X + 24, height);
+            var min = new Vector2(x, start.Y);
+            var max = min + size;
+
+            ImGui.SetCursorScreenPos(min);
+            if (ImGui.InvisibleButton($"{id}{i}", size) && selected != i)
+            {
+                selected = i;
+                changed = true;
+            }
+
+            var active = selected == i;
+            var hovered = ImGui.IsItemHovered();
+
+            if (hovered)
+                ImGui.SetTooltip(tooltip);
+
+            if (active)
+                draw.AddRectFilled(min, max, Theme.U32(Theme.Accent), height / 2);
+            else
+            {
+                if (hovered)
+                    draw.AddRectFilled(min, max, Theme.U32(Theme.Hover), height / 2);
+                draw.AddRect(min, max, Theme.U32(hovered ? Theme.AccentLight : Theme.Border), height / 2, ImDrawFlags.None, 1f);
+            }
+
+            ImGui.PushFont(UiBuilder.IconFont);
+            draw.AddText(new Vector2(min.X + 12, min.Y + (height - iconSize.Y) / 2),
+                Theme.U32(active ? Theme.OnAccent : Theme.AccentLight), iconText);
+            ImGui.PopFont();
+
+            x += size.X + gap;
+        }
+
+        ImGui.SetCursorScreenPos(start);
+        ImGui.Dummy(new Vector2(x - gap - start.X, height));
         return changed;
     }
 
