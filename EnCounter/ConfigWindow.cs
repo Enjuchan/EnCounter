@@ -40,6 +40,8 @@ public sealed partial class ConfigWindow : Window
     private readonly string version;
     private readonly Dependencies dependencies;
     private readonly AboutInfo about;
+    private readonly Action openWelcome;
+    private readonly Action openChangelog;
     private readonly FrameTiming timing;
 
     private Theme.Scope? themeScope;
@@ -61,6 +63,8 @@ public sealed partial class ConfigWindow : Window
         string version,
         Dependencies dependencies,
         AboutInfo about,
+        Action openWelcome,
+        Action openChangelog,
         IPluginLog log)
         // Der Titel bleibt "EnCounter", damit gespeicherte Fensterlage und -größe erhalten bleiben.
         : base("EnCounter")
@@ -81,6 +85,8 @@ public sealed partial class ConfigWindow : Window
         this.version = version;
         this.dependencies = dependencies;
         this.about = about;
+        this.openWelcome = openWelcome;
+        this.openChangelog = openChangelog;
         timing = new FrameTiming(log, "Draw", TimeSpan.FromSeconds(5), diagnoseLesen);
 
         Size = new Vector2(860, 620);
@@ -91,12 +97,6 @@ public sealed partial class ConfigWindow : Window
         RespectCloseHotkey = false;
         DisableWindowSounds = true;
         DisableFadeInFadeOut = true;
-
-        TitleBarButtons.Add(Loc.CreateButton(code =>
-        {
-            config.Language = code;
-            save();
-        }));
     }
 
     /// <summary>
@@ -164,7 +164,17 @@ public sealed partial class ConfigWindow : Window
         (FontAwesomeIcon.InfoCircle, Loc.T("About", "Info")),
     ];
 
+    /// <summary>Index des Tabs Regeln, siehe <see cref="Tabs"/>.</summary>
+    public const int TabRules = 0;
+
     private int tab;
+
+    /// <summary>Öffnet das Fenster auf dem gewählten Tab, etwa aus dem Willkommensfenster.</summary>
+    public void OpenTab(int index)
+    {
+        tab = index;
+        IsOpen = true;
+    }
 
     // Theme muss vor dem Begin des Fensters gesetzt sein, weil Fensterhintergrund und Titelleiste davon abhängen.
     public override void PreDraw() => themeScope = Theme.Push();
@@ -209,7 +219,7 @@ public sealed partial class ConfigWindow : Window
                 DependenciesView.Draw(dependencies);
                 break;
             default:
-                AboutView.Draw(about);
+                AboutView.Draw(about, openWelcome, openChangelog);
                 break;
         }
     }
@@ -266,7 +276,8 @@ public sealed partial class ConfigWindow : Window
                : Loc.T($"Titles can't be shown: {honorific.LastError}", $"Titel können nicht angezeigt werden: {honorific.LastError}")));
 
         var abstand = ImGui.GetStyle().ItemSpacing.X;
-        var breite = marken.Sum(m => Widgets.PillWidth(m.Text, true)) + abstand * (marken.Count - 1);
+        var breite = marken.Sum(m => Widgets.PillWidth(m.Text, true)) + abstand * (marken.Count - 1)
+            + abstand + Widgets.LanguagePillWidth();
 
         ImGui.SameLine(ImGui.GetContentRegionMax().X - breite);
         for (var i = 0; i < marken.Count; i++)
@@ -278,6 +289,15 @@ public sealed partial class ConfigWindow : Window
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip(marken[i].Tooltip);
         }
+
+        ImGui.SameLine();
+        Widgets.LanguagePill(SpracheSpeichern);
+    }
+
+    private void SpracheSpeichern(string code)
+    {
+        config.Language = code;
+        save();
     }
 
     private void DrawStatuszeile()

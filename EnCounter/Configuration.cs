@@ -34,6 +34,12 @@ public sealed class Configuration : IPluginConfiguration
     /// <summary>Gewählte Sprache ("de" oder "en"); null heißt wie Dalamud.</summary>
     public string? Language { get; set; }
 
+    /// <summary>
+    /// Die zuletzt gezeigte Plugin-Version, leer bei Neuinstallation. Entscheidet, ob Willkommen oder
+    /// Changelog erscheint; getrennt von <see cref="Version"/>, das nur die Migrationen zählt.
+    /// </summary>
+    public string LastSeenVersion { get; set; } = string.Empty;
+
     public List<CounterEntry> Counters { get; set; } = [];
 
     public sealed class CounterEntry

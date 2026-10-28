@@ -56,71 +56,89 @@ public sealed partial class ConfigWindow
     /// </summary>
     private void DrawImport()
     {
-        Abschnitt(Loc.T("Import from PatMe", "Import aus PatMe"), null, breite =>
+        Abschnitt(Loc.T("Import from PatMe", "Import aus PatMe"), null, DrawImportInhalt);
+    }
+
+    /// <summary>
+    /// Die Einstellungen im Willkommensfenster: derselbe Import wie hier und ein Knopf,
+    /// der die Regeln öffnet, damit man die erste anlegt oder eine der mitgelieferten ändert.
+    /// </summary>
+    public void DrawWelcomeSettings(float breite)
+    {
+        ImGui.TextColored(Theme.AccentLight, Loc.T("Import from PatMe", "Import aus PatMe"));
+        DrawImportInhalt(breite);
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        if (Widgets.PrimaryButton(Loc.T("Open rules", "Regeln öffnen"), FontAwesomeIcon.ListUl))
+            OpenTab(TabRules);
+    }
+
+    private void DrawImportInhalt(float breite)
+    {
+        ImGui.TextColored(Theme.Muted, Loc.T("Adds counts to the shared list. No rules are created.",
+                                             "Fügt Zähler zur gemeinsamen Liste hinzu. Es werden keine Regeln angelegt."));
+        ImGui.Spacing();
+
+        if (ImGui.Button(Loc.T("Read PatMe", "PatMe lesen")))
         {
-            ImGui.TextColored(Theme.Muted, Loc.T("Adds counts to the shared list. No rules are created.",
-                                                 "Fügt Zähler zur gemeinsamen Liste hinzu. Es werden keine Regeln angelegt."));
-            ImGui.Spacing();
+            importFund = PatMeImport.Lesen(konfigOrdner, eigeneCid());
 
-            if (ImGui.Button(Loc.T("Read PatMe", "PatMe lesen")))
+            // Ohne erkennbaren eigenen Charakter bliebe sonst gar nichts uebrig.
+            importAlle = importFund.Eigener is null;
+            importErgebnis = null;
+        }
+
+        if (importFund is null)
+        {
+            if (importErgebnis is { } n)
             {
-                importFund = PatMeImport.Lesen(konfigOrdner, eigeneCid());
-
-                // Ohne erkennbaren eigenen Charakter bliebe sonst gar nichts uebrig.
-                importAlle = importFund.Eigener is null;
-                importErgebnis = null;
+                ImGui.Spacing();
+                ImGui.TextColored(Theme.Success, n == 1 ? Loc.T("1 entry imported.", "1 Eintrag importiert.") : Loc.T($"{n} entries imported.", $"{n} Einträge importiert."));
             }
 
-            if (importFund is null)
-            {
-                if (importErgebnis is { } n)
-                {
-                    ImGui.Spacing();
-                    ImGui.TextColored(Theme.Success, n == 1 ? Loc.T("1 entry imported.", "1 Eintrag importiert.") : Loc.T($"{n} entries imported.", $"{n} Einträge importiert."));
-                }
+            return;
+        }
 
-                return;
-            }
+        var fund = importFund;
+        ImGui.Spacing();
 
-            var fund = importFund;
-            ImGui.Spacing();
+        DrawQuelle("PatMe", fund.PatMeGefunden, fund.HatAus("PatMe"));
+        ImGui.SameLine();
+        DrawQuelle("PatMe Honorific", fund.HonorificGefunden, fund.HatAus("PatMe Honorific"));
 
-            DrawQuelle("PatMe", fund.PatMeGefunden, fund.HatAus("PatMe"));
-            ImGui.SameLine();
-            DrawQuelle("PatMe Honorific", fund.HonorificGefunden, fund.HatAus("PatMe Honorific"));
+        // Beide zaehlen dasselbe, nur unterschiedlich lange - Honorific erst seit
+        // seiner Aktivierung. Der hoehere Stand gilt, sonst zaehlte ein Dote doppelt.
+        if (fund.HatAus("PatMe") && fund.HatAus("PatMe Honorific"))
+            ImGui.TextColored(Theme.Muted, Loc.T("Both count the same things - the higher number wins.", "Beide zählen dasselbe - die höhere Zahl gilt."));
 
-            // Beide zaehlen dasselbe, nur unterschiedlich lange - Honorific erst seit
-            // seiner Aktivierung. Der hoehere Stand gilt, sonst zaehlte ein Dote doppelt.
-            if (fund.HatAus("PatMe") && fund.HatAus("PatMe Honorific"))
-                ImGui.TextColored(Theme.Muted, Loc.T("Both count the same things - the higher number wins.", "Beide zählen dasselbe - die höhere Zahl gilt."));
+        ImGui.Spacing();
+        var uebernehmbar = DrawImportZahlen(fund, breite);
 
-            ImGui.Spacing();
-            var uebernehmbar = DrawImportZahlen(fund, breite);
+        if (fund.Leer)
+            ImGui.TextColored(Theme.Muted, Loc.T("Nothing to import.", "Nichts zu importieren."));
 
-            if (fund.Leer)
-                ImGui.TextColored(Theme.Muted, Loc.T("Nothing to import.", "Nichts zu importieren."));
+        foreach (var hinweis in fund.Hinweise)
+            Umbruch(Theme.Warning, $"! {hinweis}", breite);
 
-            foreach (var hinweis in fund.Hinweise)
-                Umbruch(Theme.Warning, $"! {hinweis}", breite);
+        ImGui.Spacing();
 
-            ImGui.Spacing();
+        if (Widgets.PrimaryButton(Loc.T("Import", "Importieren"), FontAwesomeIcon.Download, uebernehmbar > 0))
+        {
+            var anzahl = PatMeImport.Anwenden(fund, counters, importAlle);
+            if (anzahl > 0)
+                save();
 
-            if (Widgets.PrimaryButton(Loc.T("Import", "Importieren"), FontAwesomeIcon.Download, uebernehmbar > 0))
-            {
-                var anzahl = PatMeImport.Anwenden(fund, counters, importAlle);
-                if (anzahl > 0)
-                    save();
+            importErgebnis = anzahl;
+            importFund = null;
+            return;
+        }
 
-                importErgebnis = anzahl;
-                importFund = null;
-                return;
-            }
+        ImGui.SameLine();
 
-            ImGui.SameLine();
-
-            if (ImGui.Button(Loc.T("Discard", "Verwerfen")))
-                importFund = null;
-        });
+        if (ImGui.Button(Loc.T("Discard", "Verwerfen")))
+            importFund = null;
     }
 
     /// <summary>

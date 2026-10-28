@@ -4,12 +4,14 @@ using Dalamud.IoC;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using EnCounter.Core;
+using EnCounter.Ui;
 
 namespace EnCounter;
 
 public sealed class Plugin : IDalamudPlugin
 {
     [PluginService] internal static IDalamudPluginInterface PluginInterface { get; private set; } = null!;
+    [PluginService] internal static IClientState ClientState { get; private set; } = null!;
     [PluginService] internal static IChatGui Chat { get; private set; } = null!;
     [PluginService] internal static IFramework Framework { get; private set; } = null!;
     [PluginService] internal static IPlayerState PlayerState { get; private set; } = null!;
@@ -32,6 +34,9 @@ public sealed class Plugin : IDalamudPlugin
     private const string Command = "/encounter";
 
     private readonly ConfigWindow window;
+    private WelcomeWindow welcomeWindow = null!;
+    private ChangelogWindow changelogWindow = null!;
+    private readonly Welcome welcome;
     private readonly WindowSystem windows = new("EnCounter");
 
     /// <summary>Das zuletzt gezählte Ereignis; null, bis etwas gezählt wurde.</summary>
@@ -65,7 +70,9 @@ public sealed class Plugin : IDalamudPlugin
         // ECommons braucht das für DalamudReflector, das der Dependencies-Tab zum Installieren nutzt.
         ECommons.ECommonsMain.Init(PluginInterface, this);
 
-        config = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
+        // Null heißt: Dalamud hatte nie eine Konfiguration dieses Plugins, also eine Neuinstallation.
+        var savedConfig = PluginInterface.GetPluginConfig();
+        config = savedConfig as Configuration ?? new Configuration();
         Loc.Init(PluginInterface, config.Language);
 
         // Reihenfolge zaehlt: Erst Regeln anlegen, damit auch die frischen eine Id
@@ -97,6 +104,7 @@ public sealed class Plugin : IDalamudPlugin
         // Die ContentId trennt die eigenen Charaktere - PatMe fuehrt seine Staende so.
         Ui.Widgets.Init(Textures);
         var version = PluginInterface.Manifest.AssemblyVersion.ToString(3);
+        var dependencies = new Dependencies(PluginInterface, Log, EnCounterDependencies.Groups);
         window = new ConfigWindow(config, counters, cooldowns, Data, konfigOrdner,
                                   () => PlayerState.IsLoaded ? PlayerState.ContentId : 0ul,
                                   AktuellesZiel,
@@ -107,10 +115,31 @@ public sealed class Plugin : IDalamudPlugin
                                   honorific,
                                   presenter,
                                   version,
-                                  new Dependencies(PluginInterface, Log, EnCounterDependencies.Groups),
+                                  dependencies,
                                   EnCounterAbout.Create(version),
+                                  () => welcomeWindow.IsOpen = true,
+                                  () => changelogWindow.IsOpen = true,
                                   Log);
         windows.AddWindow(window);
+
+        // Gespeichert wird über den gesammelten Weg, weil er die Zähler mitschreibt.
+        var saveLanguage = new Action<string>(code =>
+        {
+            config.Language = code;
+            MerkeAenderung();
+        });
+        welcome = new Welcome(ClientState, PluginInterface.Manifest.AssemblyVersion.ToString(), savedConfig is not null,
+                              config.LastSeenVersion, seen =>
+        {
+            config.LastSeenVersion = seen;
+            MerkeAenderung();
+        });
+        changelogWindow = new ChangelogWindow("EnCounter", EnCounterChangelog.Entries, welcome.IsNew, saveLanguage);
+        welcomeWindow = new WelcomeWindow(EnCounterWelcome.Create(version, window.DrawWelcomeSettings),
+                                          dependencies,
+                                          () => window.IsOpen = true, () => changelogWindow.IsOpen = true, saveLanguage);
+        windows.AddWindow(welcomeWindow);
+        windows.AddWindow(changelogWindow);
 
         PluginInterface.UiBuilder.Draw += Draw;
 
@@ -126,6 +155,8 @@ public sealed class Plugin : IDalamudPlugin
         Loc.Changed += RegisterCommand;
 
         Framework.Update += Tick;
+
+        welcome.Start(() => welcomeWindow.IsOpen = true, () => changelogWindow.IsOpen = true);
 
         // Anderen Plugins - etwa einem eigenen Titel-Wechsler - mitteilen, wann
         // EnCounter den Titel belegt.
@@ -454,6 +485,7 @@ public sealed class Plugin : IDalamudPlugin
 
     public void Dispose()
     {
+        welcome.Dispose();
         Loc.Changed -= RegisterCommand;
         Loc.Dispose();
         Commands.RemoveHandler(Command);

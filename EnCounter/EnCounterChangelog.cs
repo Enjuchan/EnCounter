@@ -1,0 +1,151 @@
+namespace EnCounter;
+
+/// <summary>Alle Versionen mit Datum des Release-Tags, neueste zuerst.</summary>
+public static class EnCounterChangelog
+{
+    public static readonly IReadOnlyList<ChangelogEntry> Entries =
+    [
+        new("0.4.3.0", "2026-10-28",
+        [
+            new("A welcome window appears after you install EnCounter, with the first steps, the PatMe import and a shortcut to your rules.",
+                "Nach der Installation erscheint ein Willkommensfenster mit den ersten Schritten, dem PatMe-Import und einer Abkürzung zu deinen Regeln."),
+            new("A changelog window appears after every update and lists all versions; new ones are marked.",
+                "Nach jedem Update erscheint ein Changelog-Fenster mit allen Versionen; neue sind markiert."),
+            new("Both windows can be opened again from the About tab.",
+                "Beide Fenster lassen sich im Info-Tab erneut öffnen."),
+            new("The language switch moved from the title bar into the header band, away from the window buttons.",
+                "Der Sprachschalter sitzt jetzt im Kopfband statt in der Titelleiste, weg von den Fensterknöpfen."),
+        ]),
+        new("0.4.2.0", "2026-10-28",
+        [
+            new("EnCounter is available in German and English. A language button in the title bar switches instantly.",
+                "EnCounter gibt es auf Deutsch und Englisch. Ein Sprach-Knopf in der Titelleiste wechselt sofort."),
+            new("It starts in Dalamud's language until you choose one yourself.",
+                "Es startet in der Sprache von Dalamud, bis du selbst eine wählst."),
+            new("The tab bar switches to icons when the window is too narrow.",
+                "Die Tab-Leiste schaltet auf Icons um, wenn das Fenster zu schmal ist."),
+        ]),
+        new("0.4.1.0", "2026-10-28",
+        [
+            new("New Dependencies tab: shows whether Honorific is there and installs it with one click.",
+                "Neuer Abhängigkeiten-Tab: zeigt, ob Honorific da ist, und installiert es mit einem Klick."),
+            new("New About tab with description, commands and license.",
+                "Neuer Info-Tab mit Beschreibung, Befehlen und Lizenz."),
+            new("Nothing is drawn during loading screens. Diagnostics also shows the draw time of the window.",
+                "In Ladebildschirmen wird nichts mehr gezeichnet. Die Diagnose zeigt außerdem die Zeichenzeit des Fensters."),
+        ]),
+        new("0.4.0.0", "2026-10-27",
+        [
+            new("The whole window is new, in the look shared by the En plugins.",
+                "Das ganze Fenster ist neu, im gemeinsamen Look der En-Plugins."),
+            new("The header shows the Honorific status, the title currently showing and whether counting is paused, plus the last counted event.",
+                "Die Kopfzeile zeigt den Honorific-Status, den gerade gezeigten Titel und ob das Zählen pausiert ist, dazu das zuletzt gezählte Ereignis."),
+            new("Rules are cards with an on/off switch and a warning if a rule can never count. The editor has a live title preview and placeholder and colour shortcuts.",
+                "Regeln sind Karten mit Ein/Aus-Schalter und einer Warnung, wenn eine Regel nie zählen kann. Der Editor hat eine Live-Vorschau des Titels sowie Abkürzungen für Platzhalter und Farben."),
+            new("Counts can be searched, and people expand into their own cards. Settings hold pause, diagnostics and the PatMe import.",
+                "Die Zähler lassen sich durchsuchen, Personen klappen als eigene Karten auf. In den Einstellungen liegen Pause, Diagnose und der PatMe-Import."),
+        ]),
+        new("0.3.4.6", "2026-08-30",
+        [
+            new("Each rule shows only what it counts: one number for one direction, two for both. The Counts tab uses sub-tabs instead of three look-alike bars.",
+                "Jede Regel zeigt nur, was sie zählt: eine Zahl bei einer Richtung, zwei bei beiden. Der Zähler-Tab nutzt Unter-Tabs statt dreier gleich aussehender Balken."),
+        ]),
+        new("0.3.4.5", "2026-08-30",
+        [
+            new("A duplicated rule no longer uses a hidden counter-template once you switch it to one direction.",
+                "Eine duplizierte Regel nutzt keine unsichtbare Gegenvorlage mehr, wenn du sie auf eine Richtung stellst."),
+        ]),
+        new("0.3.4.4", "2026-08-30",
+        [
+            new("Emotes that the game sends under a different number depending on the other player's size now count like the main emote. Before, a rule counted some people and not others.",
+                "Emotes, die das Spiel je nach Größe des Gegenübers unter anderer Nummer sendet, zählen jetzt wie das Haupt-Emote. Vorher zählte eine Regel bei manchen Personen und bei anderen nicht."),
+        ]),
+        new("0.3.4.3", "2026-08-30",
+        [
+            new("New diagnostics: /encounter debug logs every step of emote processing to the log and to chat.",
+                "Neue Diagnose: /encounter debug schreibt jeden Schritt der Emote-Verarbeitung ins Log und in den Chat."),
+        ]),
+        new("0.3.4.2", "2026-08-30",
+        [
+            new("The rule list showed the count of everyone for a rule limited to certain people. It now counts only the people named.",
+                "Die Regelliste zeigte bei einer Regel für bestimmte Personen den Stand aller. Jetzt zählt sie nur die genannten Personen."),
+        ]),
+        new("0.3.4.1", "2026-08-29",
+        [
+            new("Emote rules duplicated from a chat rule could never count because of hidden text conditions. Those now apply to text only.",
+                "Emote-Regeln, die aus einer Chat-Regel dupliziert wurden, konnten wegen versteckter Text-Bedingungen nie zählen. Diese gelten jetzt nur noch für Text."),
+            new("Resetting a count now also clears the anti-spam delay, so the next emote counts right away.",
+                "Zurücksetzen räumt jetzt auch die Spam-Bremse weg, sodass das nächste Emote sofort zählt."),
+        ]),
+        new("0.3.4.0", "2026-08-29",
+        [
+            new("The \"Last recognised\" diagnostic display is gone again; it was only a tool for tracking down a bug.",
+                "Die Diagnose-Anzeige \"Last recognised\" ist wieder entfernt; sie war nur ein Werkzeug zur Fehlersuche."),
+        ]),
+        new("0.3.3.0", "2026-08-29",
+        [
+            new("Titles with invisible control characters, for example from copied auto-translate text, never appeared. EnCounter now removes them and offers to clean up a saved template.",
+                "Titel mit unsichtbaren Steuerzeichen, etwa aus kopiertem Auto-Translate-Text, erschienen nie. EnCounter entfernt sie jetzt und bietet an, eine gespeicherte Vorlage zu bereinigen."),
+            new("\"Only from\" shows who was recognised last, with their world.",
+                "\"Only from\" zeigt, wen EnCounter zuletzt erkannt hat, samt Welt."),
+        ]),
+        new("0.3.2.0", "2026-08-29",
+        [
+            new("Counts keep the full name, so two players with the same first name on one world no longer share a count. Titles still show the first name only.",
+                "Zähler behalten den vollen Namen, zwei Spieler mit gleichem Vornamen auf einer Welt teilen sich also keinen Stand mehr. Titel zeigen weiter nur den Vornamen."),
+            new("\"Only from\" needs the full form First Last@World. A button adds your current target.",
+                "\"Only from\" verlangt die volle Form Vorname Nachname@Welt. Ein Knopf trägt dein aktuelles Ziel ein."),
+            new("The more specific rule now provides the message, and you can reorder rules with up and down. Delete and reset need Shift. Duplicating copies every field.",
+                "Die genauere Regel stellt jetzt die Meldung, und du kannst Regeln mit Auf und Ab umsortieren. Löschen und Zurücksetzen brauchen Shift. Duplizieren kopiert jedes Feld."),
+        ]),
+        new("0.3.1.0", "2026-08-29",
+        [
+            new("The PatMe import no longer leaves raw IDs in the counts and no longer creates rules. It also reads PatMe Honorific; where the two disagree, the higher number counts and the dialog shows both.",
+                "Der PatMe-Import hinterlässt keine rohen IDs mehr in den Zählern und legt keine Regeln mehr an. Er liest auch PatMe Honorific; wo beide abweichen, gilt die höhere Zahl und der Dialog zeigt beide."),
+            new("The Counts tab starts with totals per event, then people by received and by given.",
+                "Der Zähler-Tab beginnt mit den Gesamtzahlen je Ereignis, dann folgen Personen nach Empfangenem und Gegebenem."),
+        ]),
+        new("0.3.0.0", "2026-08-29",
+        [
+            new("Counts now belong to the event, not to a rule. A rule you create later knows the earlier counts right away, and a rule for one person no longer stays silent behind a general one.",
+                "Zähler gehören jetzt dem Ereignis, nicht der Regel. Eine später angelegte Regel kennt die bisherigen Zähler sofort, und eine Regel für eine Person bleibt hinter einer allgemeinen nicht mehr stumm."),
+            new("Import from PatMe and PatMe Honorific, optionally for the current character only.",
+                "Import aus PatMe und PatMe Honorific, wahlweise nur für den gespielten Charakter."),
+            new("Rules can be limited to certain people, the title can sit above or below the name, and each direction can have its own template.",
+                "Regeln lassen sich auf bestimmte Personen einschränken, der Titel kann über oder unter dem Namen stehen, und jede Richtung kann eine eigene Vorlage haben."),
+            new("Counts have their own tab. Hug now includes /embrace.",
+                "Die Zähler haben einen eigenen Tab. Umarmen umfasst jetzt auch /embrace."),
+        ]),
+        new("0.2.0.0", "2026-08-28",
+        [
+            new("New Counts tab: who emoted how often, with world names.",
+                "Neuer Zähler-Tab: wer wie oft geemotet hat, mit Weltnamen."),
+            new("Anti-spam delay per rule and person, duplicating rules, and counting what you do to others.",
+                "Spam-Bremse je Regel und Person, Regeln duplizieren und Zählen dessen, was du bei anderen auslöst."),
+            new("Counts are tied to a rule ID instead of its name, so renaming a rule keeps its count. Channels are listed one by one, including Alliance, Novice Network and PvP team.",
+                "Zähler hängen an einer Regel-ID statt am Namen, Umbenennen behält also den Stand. Kanäle stehen einzeln da, auch Allianz, Neulingskanal und PvP-Team."),
+            new("The placeholder is now [Count]; old templates are converted.",
+                "Der Platzhalter heißt jetzt [Count]; alte Vorlagen werden umgeschrieben."),
+        ]),
+        new("0.1.3.0", "2026-08-28",
+        [
+            new("The plugin installer no longer complains about a missing main window button.",
+                "Der Plugin-Installer mahnt keinen fehlenden Knopf für das Hauptfenster mehr an."),
+        ]),
+        new("0.1.2.0", "2026-08-28",
+        [
+            new("The colour hint is corrected: without own colours the game's default applies, not Honorific's.",
+                "Der Farbhinweis ist korrigiert: Ohne eigene Farben gilt die Vorgabe des Spiels, nicht die von Honorific."),
+        ]),
+        new("0.1.1.0", "2026-08-28",
+        [
+            new("A template now says up to which name length it fits instead of warning that nothing will show.",
+                "Eine Vorlage sagt jetzt, bis zu welcher Namenslänge sie passt, statt zu warnen, dass nichts erscheint."),
+        ]),
+        new("0.1.0.0", "2026-08-28",
+        [
+            new("First release: counts emotes and chat messages by rules and shows the tally as your title through Honorific.",
+                "Erste Veröffentlichung: zählt Emotes und Chat-Nachrichten nach Regeln und zeigt den Stand über Honorific als Titel."),
+        ]),
+    ];
+}
