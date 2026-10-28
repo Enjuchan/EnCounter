@@ -5,6 +5,11 @@ public static class EnCounterChangelog
 {
     public static readonly IReadOnlyList<ChangelogEntry> Entries =
     [
+        new("0.4.3.1", "2026-10-28",
+        [
+            new("The description in the About tab now wraps correctly.",
+                "Die Beschreibung im Info-Tab bricht jetzt richtig um."),
+        ]),
         new("0.4.3.0", "2026-10-28",
         [
             new("A welcome window appears after you install EnCounter, with the first steps, the PatMe import and a shortcut to your rules.",
