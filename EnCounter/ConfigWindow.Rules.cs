@@ -18,7 +18,14 @@ public sealed partial class ConfigWindow
         ImGui.BeginChild("editor", new(0, 0));
 
         if (Gewaehlt is { } regel)
+        {
+            // Ohne eigenen ID-Bereich tragen die Felder jeder Regel dieselbe ImGui-ID.
+            // Wird beim Wechsel ein gerade bearbeitetes Feld deaktiviert, schreibt ImGui
+            // dessen Text dann in das gleichnamige Feld der neu gewählten Regel.
+            ImGui.PushID(regel.Id);
             DrawEditor(regel);
+            ImGui.PopID();
+        }
         else
             ImGui.TextColored(Theme.Muted, Loc.T("No rule selected. Create one with New rule.", "Keine Regel ausgewählt. Lege mit dem Knopf Neue Regel eine an."));
 

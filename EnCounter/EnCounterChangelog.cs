@@ -5,6 +5,11 @@ public static class EnCounterChangelog
 {
     public static readonly IReadOnlyList<ChangelogEntry> Entries =
     [
+        new("0.4.3.2", "2026-11-12",
+        [
+            new("Switching to another rule while editing a field no longer copies the text you just typed into the same field of the newly selected rule.",
+                "Wechselt man beim Bearbeiten eines Feldes zu einer anderen Regel, landet der gerade getippte Text nicht mehr im gleichen Feld der neu gewählten Regel."),
+        ]),
         new("0.4.3.1", "2026-10-28",
         [
             new("The description in the About tab now wraps correctly.",
